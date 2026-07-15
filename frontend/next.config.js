@@ -1,14 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Proxy API calls to the Express backend during development
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:3001/api/:path*',
-      },
-    ];
+  // Force Next.js to compile as a static HTML/JS website
+  output: 'export',
+  // Disable image optimization server requirement for static export
+  images: {
+    unoptimized: true,
   },
 };
 
 module.exports = nextConfig;
+
