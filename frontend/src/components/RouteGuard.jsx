@@ -22,7 +22,7 @@ export default function RouteGuard({ children }) {
     const userStr = localStorage.getItem('wellsim_user');
 
     if (!token || !userStr) {
-      router.push('/login');
+      window.location.href = '/login';
       return;
     }
 
@@ -34,7 +34,7 @@ export default function RouteGuard({ children }) {
       // Invalid user data — force re-login
       localStorage.removeItem('wellsim_token');
       localStorage.removeItem('wellsim_user');
-      router.push('/login');
+      window.location.href = '/login';
     }
 
     setIsChecking(false);

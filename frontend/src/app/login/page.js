@@ -23,9 +23,9 @@ export default function LoginPage() {
   useEffect(() => {
     const token = localStorage.getItem('wellsim_token');
     if (token) {
-      router.push('/');
+      window.location.href = '/';
     }
-  }, [router]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,7 +53,7 @@ export default function LoginPage() {
       localStorage.setItem('wellsim_user', JSON.stringify(data.user));
 
       // Redirect to dashboard
-      router.push('/');
+      window.location.href = '/';
     } catch (err) {
       setError('Unable to connect to server. Please check your network.');
       setIsLoading(false);
