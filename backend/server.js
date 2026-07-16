@@ -24,11 +24,12 @@ const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
 
-// CORS — allow frontend to communicate with the API
+// CORS — allow frontend to communicate with the API from any domain
 app.use(cors({
-  origin: config.CORS_ORIGINS,
+  origin: true, // อนุญาตทุก Origin เพื่อป้องกันปัญหา CORS กับ Cloudflare
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Request logging
