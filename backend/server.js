@@ -16,6 +16,8 @@ const cors = require('cors');
 const morgan = require('morgan');
 const config = require('./config');
 const deviceRoutes = require('./src/routes/device');
+const authRoutes = require('./src/routes/auth');
+const patientRoutes = require('./src/routes/patients');
 
 // ─── Create Express App ─────────────────────────────────────────────
 const app = express();
@@ -25,8 +27,8 @@ const app = express();
 // CORS — allow frontend to communicate with the API
 app.use(cors({
   origin: config.CORS_ORIGINS,
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Request logging
@@ -39,6 +41,12 @@ app.use(express.json({ limit: '1mb' }));
 
 // Device API routes
 app.use('/api/device', deviceRoutes);
+
+// Authentication routes
+app.use('/api/auth', authRoutes);
+
+// Patient management routes
+app.use('/api/patients', patientRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -82,6 +90,10 @@ app.listen(config.PORT, () => {
   console.log('║  POST /api/device/data    — Receive ESP32 data       ║');
   console.log('║  GET  /api/device/latest  — Latest reading           ║');
   console.log('║  GET  /api/device/status  — Device status            ║');
+  console.log('║  POST /api/auth/login     — User authentication      ║');
+  console.log('║  GET  /api/auth/me        — Verify session           ║');
+  console.log('║  GET  /api/patients       — Patient list (auth)      ║');
+  console.log('║  PUT  /api/patients/:id   — Update vitals (auth)     ║');
   console.log('║  GET  /api/health         — Health check             ║');
   console.log('╚══════════════════════════════════════════════════════╝');
   console.log('');

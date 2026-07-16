@@ -8,7 +8,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Activity, 
   User, 
@@ -28,104 +28,32 @@ import {
   Filter,
   Check,
   TrendingDown,
-  Info
+  Info,
+  LogOut
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
+import RouteGuard from '../components/RouteGuard';
+import { fetchPatients, updatePatientVitals as apiUpdateVitals } from '../services/api';
 
-// ─── Mock Patient Data ──────────────────────────────────────────────
-const INITIAL_PATIENTS = [
-  {
-    id: 'p1',
-    name: 'Somchai Jaidee',
-    age: 62,
-    gender: 'Male',
-    weight: 78,
-    height: 170,
-    checkInTime: '19:15',
-    riskStatus: 'high', // high, moderate, low, pending
-    riskScore: 87,
-    vitals: {
-      hemoglobin: 11.2, // normal range: 13.8 - 17.2 g/dL
-      wbc: 12400,       // normal range: 4,500 - 11,000 /mcL
-      systolicBP: 142,
-      diastolicBP: 91,
-      spo2: 93,         // normal range: 95% - 100%
-      heartRate: 104,
-    },
-    findings: [
-      "Wheezing detected in the lower right lung field during expiration.",
-      "Slight tachycardia noted (104 bpm) matching elevated systolic BP.",
-      "Data Fusion Indicator: Low SpO2 (93%) correlated with abnormal lung sound pattern."
-    ],
-    audioLogs: {
-      lung: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:12' },
-      heart: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:15' },
-      cough: { available: false, status: 'Not recorded', duration: '0:00' }
-    }
-  },
-  {
-    id: 'p2',
-    name: 'Somsri Rakdee',
-    age: 45,
-    gender: 'Female',
-    weight: 56,
-    height: 158,
-    checkInTime: '19:30',
-    riskStatus: 'moderate',
-    riskScore: 48,
-    vitals: {
-      hemoglobin: 12.8,
-      wbc: 8900,
-      systolicBP: 128,
-      diastolicBP: 84,
-      spo2: 96,
-      heartRate: 82,
-    },
-    findings: [
-      "Mild cough sound pattern detected with normal lung ventilation.",
-      "Vitals are stable; Blood Pressure is pre-hypertensive.",
-      "No active wheezing or crackles heard."
-    ],
-    audioLogs: {
-      lung: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:10' },
-      heart: { available: false, status: 'Not recorded', duration: '0:00' },
-      cough: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:08' }
-    }
-  },
-  {
-    id: 'p3',
-    name: 'Anan Suksamran',
-    age: 28,
-    gender: 'Male',
-    weight: 72,
-    height: 175,
-    checkInTime: '19:42',
-    riskStatus: 'low',
-    riskScore: 12,
-    vitals: {
-      hemoglobin: 15.1,
-      wbc: 6200,
-      systolicBP: 118,
-      diastolicBP: 76,
-      spo2: 99,
-      heartRate: 70,
-    },
-    findings: [
-      "All vesicular lung sounds are normal throughout both lung fields.",
-      "Healthy cardiac rhythm with clear S1/S2 sounds.",
-      "Oxygen saturation is optimal at 99%."
-    ],
-    audioLogs: {
-      lung: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:14' },
-      heart: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:12' },
-      cough: { available: false, status: 'Not recorded', duration: '0:00' }
-    }
-  }
-];
+// Audio logs are client-side only (not stored in DB yet)
+const DEFAULT_AUDIO_LOGS = {
+  lung: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:12' },
+  heart: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:15' },
+  cough: { available: false, status: 'Not recorded', duration: '0:00' }
+};
 
 export default function Page() {
+  return (
+    <RouteGuard>
+      {({ user, onLogout }) => <Dashboard user={user} onLogout={onLogout} />}
+    </RouteGuard>
+  );
+}
+
+function Dashboard({ user, onLogout }) {
   const { deviceStatus } = useDeviceData();
-  const [patients, setPatients] = useState(INITIAL_PATIENTS);
+  const [patients, setPatients] = useState([]);
+  const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState('p1');
   const [activeAudioTab, setActiveAudioTab] = useState('lung'); // lung, heart, cough
   const [isPlaying, setIsPlaying] = useState(false);
@@ -138,6 +66,32 @@ export default function Page() {
 
   // Get active patient
   const patient = patients.find(p => p.id === selectedPatientId) || patients[0];
+
+  // Load patients from backend on mount
+  const loadPatients = useCallback(async () => {
+    try {
+      const res = await fetchPatients();
+      if (res.success && res.patients) {
+        // Add client-side audio logs to each patient
+        const patientsWithAudio = res.patients.map(p => ({
+          ...p,
+          audioLogs: p.audioLogs || DEFAULT_AUDIO_LOGS,
+        }));
+        setPatients(patientsWithAudio);
+        if (!selectedPatientId && patientsWithAudio.length > 0) {
+          setSelectedPatientId(patientsWithAudio[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load patients:', err.message);
+    } finally {
+      setPatientsLoaded(true);
+    }
+  }, [selectedPatientId]);
+
+  useEffect(() => {
+    loadPatients();
+  }, [loadPatients]);
 
   // Auto update system time
   useEffect(() => {
@@ -199,37 +153,23 @@ export default function Page() {
     }
   };
 
-  const saveVitals = () => {
-    setPatients(prev => prev.map(p => {
-      if (p.id === patient.id) {
-        // Simple recalculation of risk based on edited values (Mock AI)
-        let score = p.riskScore;
-        const hr = parseInt(editedVitals.heartRate) || 0;
-        const o2 = parseInt(editedVitals.spo2) || 100;
-        const bp = parseInt(editedVitals.systolicBP) || 120;
-
-        if (o2 < 94 || hr > 100 || bp > 140) {
-          score = 85;
-        } else if (o2 < 96 || hr > 85 || bp > 130) {
-          score = 45;
-        } else {
-          score = 15;
-        }
-
-        const riskStatus = score > 70 ? 'high' : score > 30 ? 'moderate' : 'low';
-
-        return {
-          ...p,
-          riskStatus,
-          riskScore: score,
-          vitals: {
-            ...p.vitals,
-            ...editedVitals
+  const saveVitals = async () => {
+    try {
+      // Send updated vitals to backend — backend recalculates risk
+      const res = await apiUpdateVitals(patient.id, editedVitals);
+      if (res.success && res.patient) {
+        // Update local state with backend response
+        setPatients(prev => prev.map(p => {
+          if (p.id === res.patient.id) {
+            return { ...p, ...res.patient, audioLogs: p.audioLogs };
           }
-        };
+          return p;
+        }));
       }
-      return p;
-    }));
+    } catch (err) {
+      console.error('Failed to save vitals:', err.message);
+      alert('Failed to save vitals. Please try again.');
+    }
     setIsEditing(false);
   };
 
@@ -275,15 +215,22 @@ export default function Page() {
             </div>
           </div>
 
-          {/* User Profile */}
+          {/* User Profile & Logout */}
           <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
             <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center">
               <User className="w-4 h-4 text-blue-600" />
             </div>
             <div className="text-left hidden sm:block">
-              <p className="text-xs font-bold text-slate-800">Triage Staff Node A</p>
-              <p className="text-[10px] text-slate-400">General Clinic</p>
+              <p className="text-xs font-bold text-slate-800">{user?.name || 'Staff'}</p>
+              <p className="text-[10px] text-slate-400 capitalize">{user?.role || 'Unknown'} — {user?.station || 'General Clinic'}</p>
             </div>
+            <button
+              onClick={onLogout}
+              className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>

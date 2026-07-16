@@ -15,7 +15,7 @@ module.exports = {
   // CORS — allowed frontend origins
   CORS_ORIGINS: process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
-    : ['http://localhost:3000'],
+    : ['http://localhost:3000', 'https://wellsim.pages.dev'],
 
   // Device status threshold (milliseconds)
   // If no data received within this window, device is considered offline

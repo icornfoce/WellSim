@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const deviceService = require('../services/deviceService');
 const { validateDeviceData } = require('../middleware/validation');
+const { requireAuth } = require('../middleware/auth');
 
 // ─── POST /api/device/data ──────────────────────────────────────────
 // Receive sensor data from ESP32.
@@ -41,7 +42,7 @@ router.post('/data', validateDeviceData, (req, res) => {
 // ─── GET /api/device/latest ─────────────────────────────────────────
 // Retrieve the latest sensor reading.
 // Optional query param: ?device_id=ESP32-001
-router.get('/latest', (req, res) => {
+router.get('/latest', requireAuth, (req, res) => {
   try {
     const { device_id } = req.query;
     const data = deviceService.getLatestData(device_id);
@@ -71,7 +72,7 @@ router.get('/latest', (req, res) => {
 // ─── GET /api/device/status ─────────────────────────────────────────
 // Check device connection status (online/offline).
 // Optional query param: ?device_id=ESP32-001
-router.get('/status', (req, res) => {
+router.get('/status', requireAuth, (req, res) => {
   try {
     const { device_id } = req.query;
     const status = deviceService.getDeviceStatus(device_id);

@@ -9,7 +9,7 @@
  */
 
 const config = require('../../config');
-const { placeholder: dbPlaceholder } = require('../placeholders/database');
+const dbService = require('./dbService');
 const { placeholder: aiPlaceholder } = require('../placeholders/aiAnalysis');
 
 // ─── In-Memory Store ────────────────────────────────────────────────
@@ -56,8 +56,8 @@ function storeDeviceData(data) {
     device.history = device.history.slice(-config.MAX_HISTORY_PER_DEVICE);
   }
 
-  // FUTURE: Persist to database
-  dbPlaceholder.save(record);
+  // Persist to database file (db.json)
+  dbService.saveReading(record);
 
   // FUTURE: Trigger AI analysis pipeline
   aiPlaceholder.analyze(record);
