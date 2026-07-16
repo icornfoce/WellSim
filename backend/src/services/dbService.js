@@ -192,6 +192,40 @@ function findUserById(id) {
 // ─── Patient Operations ──────────────────────────────────────────────
 
 /**
+ * Recalculate a patient's risk score/status from their vitals.
+ * Shared by create, update, and vitals-update flows.
+ *
+ * @param {Object} vitals
+ * @returns {{ riskScore: number, riskStatus: string }}
+ */
+function calculateRisk(vitals = {}) {
+  const hr = parseInt(vitals.heartRate) || 0;
+  const o2 = parseInt(vitals.spo2) || 100;
+  const bp = parseInt(vitals.systolicBP) || 120;
+
+  if (o2 < 94 || hr > 100 || bp > 140) {
+    return { riskScore: 85, riskStatus: 'high' };
+  }
+  if (o2 < 96 || hr > 85 || bp > 130) {
+    return { riskScore: 45, riskStatus: 'moderate' };
+  }
+  return { riskScore: 15, riskStatus: 'low' };
+}
+
+/**
+ * Generate the next sequential patient ID (p1, p2, p3, ...).
+ * Always greater than any existing numeric ID, so it never collides
+ * even after deletions.
+ */
+function nextPatientId(patients) {
+  const maxNum = patients.reduce((max, p) => {
+    const match = /^p(\d+)$/.exec(p.id || '');
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  return `p${maxNum + 1}`;
+}
+
+/**
  * Get all patients.
  */
 function getAllPatients() {
@@ -208,6 +242,94 @@ function getPatientById(id) {
 }
 
 /**
+ * Create a new patient record.
+ * Missing vitals fall back to healthy defaults; risk is auto-calculated.
+ *
+ * @param {Object} data - Patient fields (name, age, gender, weight, height, ...)
+ * @returns {Object} The newly created patient
+ */
+function createPatient(data = {}) {
+  const db = readDB();
+
+  const vitals = {
+    hemoglobin: 13.5,
+    wbc: 7000,
+    systolicBP: 120,
+    diastolicBP: 80,
+    spo2: 98,
+    heartRate: 75,
+    ...(data.vitals || {}),
+  };
+
+  const patient = {
+    id: nextPatientId(db.patients),
+    name: (data.name || '').trim() || 'Unnamed Patient',
+    age: data.age ?? null,
+    gender: data.gender || 'Unspecified',
+    weight: data.weight ?? null,
+    height: data.height ?? null,
+    checkInTime:
+      data.checkInTime ||
+      new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    vitals,
+    findings:
+      Array.isArray(data.findings) && data.findings.length
+        ? data.findings
+        : ['New patient record created. Awaiting IoT diagnostic screening.'],
+    ...calculateRisk(vitals),
+  };
+
+  db.patients.push(patient);
+  writeDB(db);
+  return patient;
+}
+
+/**
+ * Update an existing patient's editable fields (and optionally vitals).
+ * Recalculates risk whenever vitals change.
+ *
+ * @param {string} patientId
+ * @param {Object} updates
+ * @returns {Object|null} The updated patient, or null if not found
+ */
+function updatePatient(patientId, updates = {}) {
+  const db = readDB();
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return null;
+
+  const editableFields = ['name', 'age', 'gender', 'weight', 'height', 'checkInTime', 'findings'];
+  for (const field of editableFields) {
+    if (field in updates && updates[field] !== undefined) {
+      patient[field] = updates[field];
+    }
+  }
+
+  if (updates.vitals && typeof updates.vitals === 'object') {
+    patient.vitals = { ...patient.vitals, ...updates.vitals };
+    Object.assign(patient, calculateRisk(patient.vitals));
+  }
+
+  writeDB(db);
+  return patient;
+}
+
+/**
+ * Delete a patient by ID.
+ *
+ * @param {string} patientId
+ * @returns {Object|null} The removed patient, or null if not found
+ */
+function deletePatient(patientId) {
+  const db = readDB();
+  const index = db.patients.findIndex(p => p.id === patientId);
+  if (index === -1) return null;
+
+  const [removed] = db.patients.splice(index, 1);
+  writeDB(db);
+  return removed;
+}
+
+/**
  * Update a patient's vitals and recalculate risk.
  */
 function updatePatientVitals(patientId, vitals) {
@@ -215,24 +337,9 @@ function updatePatientVitals(patientId, vitals) {
   const patient = db.patients.find(p => p.id === patientId);
   if (!patient) return null;
 
-  // Merge vitals
+  // Merge vitals and recalculate risk
   patient.vitals = { ...patient.vitals, ...vitals };
-
-  // Simple risk recalculation
-  const hr = parseInt(patient.vitals.heartRate) || 0;
-  const o2 = parseInt(patient.vitals.spo2) || 100;
-  const bp = parseInt(patient.vitals.systolicBP) || 120;
-
-  if (o2 < 94 || hr > 100 || bp > 140) {
-    patient.riskScore = 85;
-    patient.riskStatus = 'high';
-  } else if (o2 < 96 || hr > 85 || bp > 130) {
-    patient.riskScore = 45;
-    patient.riskStatus = 'moderate';
-  } else {
-    patient.riskScore = 15;
-    patient.riskStatus = 'low';
-  }
+  Object.assign(patient, calculateRisk(patient.vitals));
 
   writeDB(db);
   return patient;
@@ -264,6 +371,10 @@ module.exports = {
   findUserById,
   getAllPatients,
   getPatientById,
+  createPatient,
+  updatePatient,
+  deletePatient,
   updatePatientVitals,
+  calculateRisk,
   saveReading,
 };

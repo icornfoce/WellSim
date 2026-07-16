@@ -93,9 +93,11 @@ app.listen(config.PORT, () => {
   console.log('║  GET  /api/device/status  — Device status            ║');
   console.log('║  POST /api/auth/login     — User authentication      ║');
   console.log('║  GET  /api/auth/me        — Verify session           ║');
-  console.log('║  GET  /api/patients       — Patient list (auth)      ║');
-  console.log('║  PUT  /api/patients/:id   — Update vitals (auth)     ║');
-  console.log('║  GET  /api/health         — Health check             ║');
+  console.log('║  GET    /api/patients     — Patient list (auth)      ║');
+  console.log('║  POST   /api/patients     — Create patient (auth)    ║');
+  console.log('║  PUT    /api/patients/:id — Update patient (auth)    ║');
+  console.log('║  DELETE /api/patients/:id — Delete patient (auth)    ║');
+  console.log('║  GET    /api/health       — Health check             ║');
   console.log('╚══════════════════════════════════════════════════════╝');
   console.log('');
 });

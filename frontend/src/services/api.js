@@ -88,7 +88,7 @@ export async function fetchPatients() {
 /**
  * Update a patient's vitals. Backend will recalculate risk.
  * Requires authentication.
- * 
+ *
  * @param {string} patientId
  * @param {Object} vitals
  * @returns {Promise<Object>} { success, patient }
@@ -98,6 +98,67 @@ export async function updatePatientVitals(patientId, vitals) {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(vitals),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Create a new patient. Requires authentication.
+ *
+ * @param {Object} patient - Patient fields (name, age, gender, weight, height, vitals, ...)
+ * @returns {Promise<Object>} { success, patient }
+ */
+export async function createPatient(patient) {
+  const response = await fetch(PATIENTS_BASE, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(patient),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Update a patient's record (demographics and/or vitals).
+ * Backend recalculates risk when vitals change. Requires authentication.
+ *
+ * @param {string} patientId
+ * @param {Object} updates
+ * @returns {Promise<Object>} { success, patient }
+ */
+export async function updatePatient(patientId, updates) {
+  const response = await fetch(`${PATIENTS_BASE}/${patientId}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Delete a patient by ID. Requires authentication.
+ *
+ * @param {string} patientId
+ * @returns {Promise<Object>} { success, patient }
+ */
+export async function deletePatient(patientId) {
+  const response = await fetch(`${PATIENTS_BASE}/${patientId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
   });
 
   if (!response.ok) {

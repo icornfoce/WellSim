@@ -29,11 +29,21 @@ import {
   Check,
   TrendingDown,
   Info,
-  LogOut
+  LogOut,
+  Plus,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
-import { fetchPatients, updatePatientVitals as apiUpdateVitals } from '../services/api';
+import PatientFormModal from '../components/PatientFormModal';
+import {
+  fetchPatients,
+  updatePatientVitals as apiUpdateVitals,
+  createPatient as apiCreatePatient,
+  updatePatient as apiUpdatePatient,
+  deletePatient as apiDeletePatient,
+} from '../services/api';
 
 // Audio logs are client-side only (not stored in DB yet)
 const DEFAULT_AUDIO_LOGS = {
@@ -64,6 +74,11 @@ function Dashboard() {
   // Input editing state for vitals/lab data
   const [isEditing, setIsEditing] = useState(false);
   const [editedVitals, setEditedVitals] = useState({});
+
+  // Add/Edit patient modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('add'); // 'add' | 'edit'
+  const [modalSubmitting, setModalSubmitting] = useState(false);
 
   // Get active patient
   const patient = patients.find(p => p.id === selectedPatientId) || patients[0];
@@ -149,7 +164,7 @@ function Dashboard() {
   }, [selectedPatientId, patient]);
 
   // Show loading screen while waiting for the API to fetch patients
-  if (!patientsLoaded || !patient) {
+  if (!patientsLoaded) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
@@ -208,6 +223,97 @@ function Dashboard() {
     }
     setIsEditing(false);
   };
+
+  // ─── Patient CRUD handlers ──────────────────────────────────────────
+  const openAddModal = () => {
+    setModalMode('add');
+    setModalOpen(true);
+  };
+
+  const openEditModal = () => {
+    setModalMode('edit');
+    setModalOpen(true);
+  };
+
+  const handleModalSubmit = async (payload) => {
+    setModalSubmitting(true);
+    try {
+      if (modalMode === 'add') {
+        const res = await apiCreatePatient(payload);
+        if (res.success && res.patient) {
+          const newPatient = { ...res.patient, audioLogs: DEFAULT_AUDIO_LOGS };
+          setPatients((prev) => [...prev, newPatient]);
+          setSelectedPatientId(res.patient.id);
+        }
+      } else {
+        const res = await apiUpdatePatient(patient.id, payload);
+        if (res.success && res.patient) {
+          setPatients((prev) =>
+            prev.map((p) =>
+              p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p
+            )
+          );
+        }
+      }
+      setModalOpen(false);
+    } catch (err) {
+      console.error('Failed to save patient:', err.message);
+      alert(`Failed to save patient: ${err.message}`);
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const handleDeletePatient = async () => {
+    if (!patient) return;
+    if (!window.confirm(`Delete patient "${patient.name}"? This action cannot be undone.`)) return;
+
+    const deletedId = patient.id;
+    try {
+      const res = await apiDeletePatient(deletedId);
+      if (res.success) {
+        const remaining = patients.filter((p) => p.id !== deletedId);
+        setPatients(remaining);
+        setSelectedPatientId(remaining.length ? remaining[0].id : null);
+      }
+    } catch (err) {
+      console.error('Failed to delete patient:', err.message);
+      alert(`Failed to delete patient: ${err.message}`);
+    }
+  };
+
+  // Empty state — no patients in the queue (e.g. after deleting them all)
+  if (!patient) {
+    return (
+      <>
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="text-center max-w-sm">
+            <div className="flex items-center justify-center w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-100">
+              <User className="w-6 h-6 text-blue-500" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">No patients yet</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              The triage queue is empty. Add a patient record to get started.
+            </p>
+            <button
+              onClick={openAddModal}
+              className="mt-5 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm active:scale-98"
+            >
+              <Plus className="w-4 h-4" /> Add Patient
+            </button>
+          </div>
+        </div>
+        <PatientFormModal
+          open={modalOpen}
+          mode={modalMode}
+          initialData={null}
+          onClose={() => setModalOpen(false)}
+          onSubmit={handleModalSubmit}
+          submitting={modalSubmitting}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -287,9 +393,22 @@ function Dashboard() {
                     {patients.length}
                   </span>
                 </h2>
-                <button className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3" /> Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadPatients}
+                    className="text-xs text-slate-500 font-semibold hover:text-blue-600 flex items-center gap-1 transition"
+                    title="Reload patient list"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Refresh
+                  </button>
+                  <button
+                    onClick={openAddModal}
+                    className="text-xs text-white font-bold bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg flex items-center gap-1 transition active:scale-95"
+                    title="Add new patient"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add
+                  </button>
+                </div>
               </div>
 
               {/* Search Bar */}
@@ -359,13 +478,30 @@ function Dashboard() {
                 <p className="text-xs text-slate-400 mt-0.5">Patient ID: {patient.id.toUpperCase()}</p>
               </div>
 
-              {/* Status card */}
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">AI Screening Risk</p>
-                  <p className="text-sm font-bold text-slate-700 capitalize">{patient?.riskStatus || 'Pending'} Risk</p>
+              {/* Actions + Status card */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={openEditModal}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition active:scale-95"
+                  title="Edit patient details"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button
+                  onClick={handleDeletePatient}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition active:scale-95"
+                  title="Delete patient"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+
+                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">AI Screening Risk</p>
+                    <p className="text-sm font-bold text-slate-700 capitalize">{patient?.riskStatus || 'Pending'} Risk</p>
+                  </div>
+                  <div className={`w-3.5 h-3.5 rounded-full ${getRiskColor(patient?.riskStatus).dot} animate-pulse`} />
                 </div>
-                <div className={`w-3.5 h-3.5 rounded-full ${getRiskColor(patient?.riskStatus).dot} animate-pulse`} />
               </div>
             </div>
 
@@ -739,7 +875,17 @@ function Dashboard() {
         </section>
 
       </main>
-      
+
+      {/* Add / Edit Patient Modal */}
+      <PatientFormModal
+        open={modalOpen}
+        mode={modalMode}
+        initialData={modalMode === 'edit' ? patient : null}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleModalSubmit}
+        submitting={modalSubmitting}
+      />
+
     </div>
   );
 }
