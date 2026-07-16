@@ -118,21 +118,6 @@ function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Show loading screen while waiting for the API to fetch patients
-  if (!patientsLoaded || !patient) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
-            <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
-          </div>
-          <p className="text-sm font-semibold text-slate-500">Loading Patient Data...</p>
-        </div>
-      </div>
-    );
-  }
-
   // Audio Playback simulation
   useEffect(() => {
     let interval;
@@ -162,6 +147,21 @@ function Dashboard() {
     setIsPlaying(false);
     setPlayProgress(0);
   }, [selectedPatientId, patient]);
+
+  // Show loading screen while waiting for the API to fetch patients
+  if (!patientsLoaded || !patient) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative w-12 h-12 mx-auto mb-4">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+          </div>
+          <p className="text-sm font-semibold text-slate-500">Loading Patient Data...</p>
+        </div>
+      </div>
+    );
+  }
 
   // BMI Calculator
   const calculateBMI = (w, h) => {
