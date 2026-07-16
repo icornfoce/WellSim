@@ -61,8 +61,6 @@ export default function RouteGuard({ children }) {
     );
   }
 
-  // Pass user and logout handler to children
-  return typeof children === 'function'
-    ? children({ user, onLogout: handleLogout })
-    : children;
+  // Pass children directly
+  return children;
 }

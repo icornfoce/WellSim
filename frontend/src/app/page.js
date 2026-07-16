@@ -45,13 +45,14 @@ const DEFAULT_AUDIO_LOGS = {
 export default function Page() {
   return (
     <RouteGuard>
-      {({ user, onLogout }) => <Dashboard user={user} onLogout={onLogout} />}
+      <Dashboard />
     </RouteGuard>
   );
 }
 
-function Dashboard({ user, onLogout }) {
+function Dashboard() {
   const { deviceStatus } = useDeviceData();
+  const [user, setUser] = useState(null);
   const [patients, setPatients] = useState([]);
   const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState('p1');
@@ -93,6 +94,24 @@ function Dashboard({ user, onLogout }) {
     loadPatients();
   }, [loadPatients]);
 
+  // Load user data on client mount
+  useEffect(() => {
+    const userStr = localStorage.getItem('wellsim_user');
+    if (userStr) {
+      try {
+        setUser(JSON.parse(userStr));
+      } catch (e) {
+        console.error('Failed to parse user data:', e);
+      }
+    }
+  }, []);
+
+  const onLogout = () => {
+    localStorage.removeItem('wellsim_token');
+    localStorage.removeItem('wellsim_user');
+    window.location.href = '/login';
+  };
+
   // Auto update system time
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -108,7 +127,7 @@ function Dashboard({ user, onLogout }) {
             <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
             <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
           </div>
-          <p className="text-sm font-semibold text-slate-505">Loading Patient Data...</p>
+          <p className="text-sm font-semibold text-slate-500">Loading Patient Data...</p>
         </div>
       </div>
     );
