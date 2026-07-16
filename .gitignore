@@ -1,0 +1,41 @@
+# ─── Node.js / Dependency Folders ───
+node_modules/
+jspm_packages/
+web_members/
+
+# ─── Next.js Build Output & Cache ───
+frontend/.next/
+frontend/out/
+.next/
+out/
+
+# ─── IDEs & Editors ───
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── OS Files ───
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# ─── Environment Variables (Security) ───
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+
+# ─── Logs & Diagnostics ───
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+.wrangler/

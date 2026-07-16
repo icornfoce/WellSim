@@ -2,10 +2,11 @@
  * WellSim Frontend — API Service
  * 
  * Centralized API client for communicating with the Express backend.
- * All API calls go through Next.js rewrites → Express backend.
+ * Points to the production backend deployed on Render.
  */
 
-const API_BASE = '/api/device';
+const API_BASE = 'https://wellsim-backend.onrender.com/api/device';
+
 
 /**
  * Fetch the latest sensor data from the backend.
