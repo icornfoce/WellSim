@@ -154,8 +154,10 @@ function Dashboard() {
 
   // Set up edits
   useEffect(() => {
-    if (patient) {
+    if (patient && patient.vitals) {
       setEditedVitals({ ...patient.vitals });
+    } else {
+      setEditedVitals({});
     }
     setIsPlaying(false);
     setPlayProgress(0);
@@ -361,9 +363,9 @@ function Dashboard() {
               <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-slate-400 uppercase">AI Screening Risk</p>
-                  <p className="text-sm font-bold text-slate-700 capitalize">{patient.riskStatus} Risk</p>
+                  <p className="text-sm font-bold text-slate-700 capitalize">{patient?.riskStatus || 'Pending'} Risk</p>
                 </div>
-                <div className={`w-3.5 h-3.5 rounded-full ${getRiskColor(patient.riskStatus).dot} animate-pulse`} />
+                <div className={`w-3.5 h-3.5 rounded-full ${getRiskColor(patient?.riskStatus).dot} animate-pulse`} />
               </div>
             </div>
 
@@ -433,11 +435,11 @@ function Dashboard() {
               
               {/* SpO2 Saturation */}
               <div className={`p-4 rounded-xl border transition ${
-                patient.vitals.spo2 < 95 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
+                (patient?.vitals?.spo2 || 0) < 95 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
               }`}>
                 <div className="flex justify-between items-start">
                   <p className="text-[11px] font-bold text-slate-400 uppercase">SpO2 (Oxygen)</p>
-                  {patient.vitals.spo2 < 95 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                  {(patient?.vitals?.spo2 || 0) < 95 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
                 </div>
                 {isEditing ? (
                   <input 
@@ -447,8 +449,8 @@ function Dashboard() {
                     className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
                   />
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${patient.vitals.spo2 < 95 ? 'text-red-700' : 'text-slate-800'}`}>
-                    {patient.vitals.spo2}%
+                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.spo2 || 0) < 95 ? 'text-red-700' : 'text-slate-800'}`}>
+                    {patient?.vitals?.spo2 || 0}%
                   </p>
                 )}
                 <p className="text-[10px] text-slate-400 mt-1">Normal: 95% - 100%</p>
@@ -456,11 +458,11 @@ function Dashboard() {
 
               {/* Heart Rate */}
               <div className={`p-4 rounded-xl border transition ${
-                patient.vitals.heartRate > 100 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
+                (patient?.vitals?.heartRate || 0) > 100 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
               }`}>
                 <div className="flex justify-between items-start">
                   <p className="text-[11px] font-bold text-slate-400 uppercase">Heart Rate</p>
-                  {patient.vitals.heartRate > 100 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                  {(patient?.vitals?.heartRate || 0) > 100 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
                 </div>
                 {isEditing ? (
                   <input 
@@ -470,8 +472,8 @@ function Dashboard() {
                     className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
                   />
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${patient.vitals.heartRate > 100 ? 'text-red-700' : 'text-slate-800'}`}>
-                    {patient.vitals.heartRate} <span className="text-xs font-normal text-slate-400">bpm</span>
+                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.heartRate || 0) > 100 ? 'text-red-700' : 'text-slate-800'}`}>
+                    {patient?.vitals?.heartRate || 0} <span className="text-xs font-normal text-slate-400">bpm</span>
                   </p>
                 )}
                 <p className="text-[10px] text-slate-400 mt-1">Normal: 60 - 100 bpm</p>
@@ -479,11 +481,11 @@ function Dashboard() {
 
               {/* Blood Pressure */}
               <div className={`p-4 rounded-xl border transition ${
-                patient.vitals.systolicBP > 140 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
+                (patient?.vitals?.systolicBP || 0) > 140 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
               }`}>
                 <div className="flex justify-between items-start">
                   <p className="text-[11px] font-bold text-slate-400 uppercase">Blood Pressure</p>
-                  {patient.vitals.systolicBP > 140 && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
+                  {(patient?.vitals?.systolicBP || 0) > 140 && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
                 </div>
                 {isEditing ? (
                   <div className="flex items-center gap-1 mt-1.5">
@@ -502,8 +504,8 @@ function Dashboard() {
                     />
                   </div>
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${patient.vitals.systolicBP > 140 ? 'text-amber-700' : 'text-slate-800'}`}>
-                    {patient.vitals.systolicBP}/{patient.vitals.diastolicBP} <span className="text-xs font-normal text-slate-400">mmHg</span>
+                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.systolicBP || 0) > 140 ? 'text-amber-700' : 'text-slate-800'}`}>
+                    {patient?.vitals?.systolicBP || 120}/{patient?.vitals?.diastolicBP || 80} <span className="text-xs font-normal text-slate-400">mmHg</span>
                   </p>
                 )}
                 <p className="text-[10px] text-slate-400 mt-1">Normal: &lt; 120/80 mmHg</p>
@@ -511,7 +513,7 @@ function Dashboard() {
 
               {/* WBC Count */}
               <div className={`p-4 rounded-xl border transition ${
-                patient.vitals.wbc > 11000 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
+                (patient?.vitals?.wbc || 0) > 11000 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
               }`}>
                 <p className="text-[11px] font-bold text-slate-400 uppercase">WBC Count</p>
                 {isEditing ? (
@@ -523,7 +525,7 @@ function Dashboard() {
                   />
                 ) : (
                   <p className="text-2xl font-extrabold mt-1.5 text-slate-800">
-                    {patient.vitals.wbc.toLocaleString()} <span className="text-xs font-normal text-slate-400">/mcL</span>
+                    {(patient?.vitals?.wbc || 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">/mcL</span>
                   </p>
                 )}
                 <p className="text-[10px] text-slate-400 mt-1">Normal: 4,500 - 11,000</p>
@@ -531,7 +533,7 @@ function Dashboard() {
 
               {/* Hemoglobin */}
               <div className={`p-4 rounded-xl border transition ${
-                patient.vitals.hemoglobin < 12 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
+                (patient?.vitals?.hemoglobin || 0) < 12 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
               }`}>
                 <p className="text-[11px] font-bold text-slate-400 uppercase">Hemoglobin</p>
                 {isEditing ? (
@@ -544,7 +546,7 @@ function Dashboard() {
                   />
                 ) : (
                   <p className="text-2xl font-extrabold mt-1.5 text-slate-800">
-                    {patient.vitals.hemoglobin} <span className="text-xs font-normal text-slate-400">g/dL</span>
+                    {patient?.vitals?.hemoglobin || 0} <span className="text-xs font-normal text-slate-400">g/dL</span>
                   </p>
                 )}
                 <p className="text-[10px] text-slate-400 mt-1">Normal: 12.0 - 17.5 g/dL</p>
@@ -593,16 +595,16 @@ function Dashboard() {
 
             {/* Audio detail area */}
             <div className="p-6">
-              {patient.audioLogs[activeAudioTab].available ? (
+              {patient?.audioLogs?.[activeAudioTab]?.available ? (
                 <div className="space-y-4">
                   
                   {/* Status metadata */}
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-500 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      {patient.audioLogs[activeAudioTab].status}
+                      {patient?.audioLogs?.[activeAudioTab]?.status || 'Status unavailable'}
                     </span>
-                    <span className="font-mono text-slate-400">Duration: {patient.audioLogs[activeAudioTab].duration}</span>
+                    <span className="font-mono text-slate-400">Duration: {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
                   {/* Visual Wave Player */}
@@ -676,20 +678,20 @@ function Dashboard() {
                       cy="64" 
                       r="50" 
                       strokeWidth="10" 
-                      stroke={patient.riskStatus === 'high' ? '#EF4444' : patient.riskStatus === 'moderate' ? '#F59E0B' : '#10B981'} 
+                      stroke={patient?.riskStatus === 'high' ? '#EF4444' : patient?.riskStatus === 'moderate' ? '#F59E0B' : '#10B981'} 
                       strokeDasharray={2 * Math.PI * 50}
-                      strokeDashoffset={2 * Math.PI * 50 * (1 - patient.riskScore / 100)}
+                      strokeDashoffset={2 * Math.PI * 50 * (1 - (patient?.riskScore || 0) / 100)}
                       strokeLinecap="round"
                       fill="transparent" 
                     />
                   </svg>
-                  <span className="text-3xl font-extrabold text-slate-800">{patient.riskScore}%</span>
+                  <span className="text-3xl font-extrabold text-slate-800">{patient?.riskScore || 0}%</span>
                 </div>
 
                 <span className={`mt-3 text-xs font-bold px-3 py-1 rounded-full uppercase border ${
-                  getRiskColor(patient.riskStatus).bg
+                  getRiskColor(patient?.riskStatus).bg
                 }`}>
-                  {getRiskColor(patient.riskStatus).label}
+                  {getRiskColor(patient?.riskStatus).label}
                 </span>
               </div>
 
@@ -699,7 +701,7 @@ function Dashboard() {
                   <TrendingDown className="w-3.5 h-3.5" /> AI Diagnostic Biomarkers
                 </h3>
                 <ul className="space-y-2 text-xs text-slate-600">
-                  {patient.findings.map((finding, idx) => (
+                  {(patient?.findings || []).map((finding, idx) => (
                     <li key={idx} className="flex items-start gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                       <span>{finding}</span>
