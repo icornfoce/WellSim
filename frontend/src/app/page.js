@@ -31,6 +31,7 @@ import PatientFormModal from '../components/PatientFormModal';
 import ThemeToggle from '../components/ThemeToggle';
 import LangToggle from '../components/LangToggle';
 import { useLang } from '../i18n/LanguageContext';
+import { dataDictionaryTH } from '../i18n/translations';
 import {
   fetchPatients,
   updatePatientVitals as apiUpdateVitals,
@@ -121,7 +122,9 @@ function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
 
 function Dashboard() {
   const { deviceStatus } = useDeviceData();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  // Translate known demo/backend data strings when viewing in Thai
+  const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
   const [patients, setPatients] = useState([]);
   const [patientsLoaded, setPatientsLoaded] = useState(false);
@@ -448,7 +451,7 @@ function Dashboard() {
             <div className="text-right hidden sm:block leading-tight">
               <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
               <p className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
-                {user?.role || 'Unknown'} · {user?.station || 'General'}
+                {['nurse', 'doctor', 'patient'].includes(user?.role) ? t('role.' + user.role) : t('role.unknown')} · {user?.station || '—'}
               </p>
             </div>
             <button
@@ -808,7 +811,7 @@ function Dashboard() {
               {patient?.audioLogs?.[activeAudioTab]?.available ? (
                 <div>
                   <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
-                    <span className="truncate pr-4">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status || t('audio.statusUnavailable')}</span>
+                    <span className="truncate pr-4">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
                     <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
@@ -914,7 +917,7 @@ function Dashboard() {
                       <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
                         {String(idx + 1).padStart(2, '0')}
                       </span>
-                      <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{finding}</span>
+                      <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{td(finding)}</span>
                     </li>
                   ))}
                 </ul>

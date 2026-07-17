@@ -29,6 +29,12 @@ export const translations = {
       iotOffline: 'IOT OFFLINE',
       signOut: 'Sign out',
     },
+    role: {
+      nurse: 'nurse',
+      doctor: 'doctor',
+      patient: 'patient',
+      unknown: 'staff',
+    },
     queue: {
       title: 'Patient Queue',
       refresh: 'Reload patient list',
@@ -60,7 +66,7 @@ export const translations = {
       male: 'Male',
       female: 'Female',
       other: 'Other',
-      unspecified: 'Unspecified',
+      unspecified: '—',
     },
     vitals: {
       title: 'Lab Results & Data Fusion',
@@ -229,6 +235,12 @@ export const translations = {
       iotOffline: 'IOT ออฟไลน์',
       signOut: 'ออกจากระบบ',
     },
+    role: {
+      nurse: 'พยาบาล',
+      doctor: 'แพทย์',
+      patient: 'คนไข้',
+      unknown: 'เจ้าหน้าที่',
+    },
     queue: {
       title: 'คิวผู้ป่วย',
       refresh: 'โหลดรายชื่อใหม่',
@@ -260,7 +272,7 @@ export const translations = {
       male: 'ชาย',
       female: 'หญิง',
       other: 'อื่นๆ',
-      unspecified: 'ไม่ระบุ',
+      unspecified: '—',
     },
     vitals: {
       title: 'ผลแล็บและการรวมข้อมูล',
@@ -405,4 +417,35 @@ export const translations = {
       create: 'สร้างระเบียนผู้ป่วย',
     },
   },
+};
+
+/**
+ * Thai renderings of known demo/backend data strings (findings, audio
+ * source lines). Unknown strings pass through untouched — data entered
+ * by staff stays in whatever language it was written in.
+ */
+export const dataDictionaryTH = {
+  'Wheezing detected in the lower right lung field during expiration.':
+    'ตรวจพบเสียงหวีด (wheezing) ที่ปอดขวาส่วนล่างขณะหายใจออก',
+  'Slight tachycardia noted (104 bpm) matching elevated systolic BP.':
+    'หัวใจเต้นเร็วเล็กน้อย (104 ครั้ง/นาที) สอดคล้องกับความดันตัวบนที่สูง',
+  'Data Fusion Indicator: Low SpO2 (93%) correlated with abnormal lung sound pattern.':
+    'ตัวชี้วัดจากการรวมข้อมูล: SpO2 ต่ำ (93%) สัมพันธ์กับรูปแบบเสียงปอดที่ผิดปกติ',
+  'Mild cough sound pattern detected with normal lung ventilation.':
+    'พบรูปแบบเสียงไอเล็กน้อย การระบายอากาศของปอดปกติ',
+  'Vitals are stable; Blood Pressure is pre-hypertensive.':
+    'สัญญาณชีพคงที่ ความดันโลหิตอยู่ในระดับก่อนความดันสูง',
+  'No active wheezing or crackles heard.':
+    'ไม่พบเสียงหวีดหรือเสียงกรอบแกรบผิดปกติ',
+  'All vesicular lung sounds are normal throughout both lung fields.':
+    'เสียงหายใจปกติทั่วทั้งปอดสองข้าง',
+  'Healthy cardiac rhythm with clear S1/S2 sounds.':
+    'จังหวะการเต้นหัวใจปกติ เสียง S1/S2 ชัดเจน',
+  'Oxygen saturation is optimal at 99%.':
+    'ค่าความอิ่มตัวออกซิเจนในเลือดดีมากที่ 99%',
+  'New patient record created. Awaiting IoT diagnostic screening.':
+    'สร้างระเบียนผู้ป่วยใหม่แล้ว รอการตรวจคัดกรองด้วยอุปกรณ์ IoT',
+  'Recorded via WellSim IoT Device (INMP441 - I2S)':
+    'บันทึกผ่านอุปกรณ์ IoT ของ WellSim (INMP441 - I2S)',
+  'Not recorded': 'ไม่ได้บันทึก',
 };

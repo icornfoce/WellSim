@@ -13,6 +13,7 @@ import { LogOut, RefreshCw } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
+import { dataDictionaryTH } from '../../i18n/translations';
 import { fetchMyRecord } from '../../services/api';
 
 function PulseMark({ className = 'w-4 h-4' }) {
@@ -69,7 +70,8 @@ function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
 }
 
 export default function PortalPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -352,7 +354,7 @@ export default function PortalPage() {
                           <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
                             {String(idx + 1).padStart(2, '0')}
                           </span>
-                          <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{finding}</span>
+                          <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{td(finding)}</span>
                         </li>
                       ))}
                     </ul>
