@@ -178,7 +178,8 @@ function createDefaultDB() {
  */
 function findUserByEmail(email) {
   const db = readDB();
-  return db.users.find(u => u.email === email) || null;
+  const needle = String(email || '').trim().toLowerCase();
+  return db.users.find(u => u.email.toLowerCase() === needle) || null;
 }
 
 /**
@@ -187,6 +188,50 @@ function findUserByEmail(email) {
 function findUserById(id) {
   const db = readDB();
   return db.users.find(u => u.id === id) || null;
+}
+
+/**
+ * Generate the next sequential user ID (u1, u2, u3, ...).
+ * Always greater than any existing numeric ID, so it never collides
+ * even after deletions.
+ */
+function nextUserId(users) {
+  const maxNum = users.reduce((max, u) => {
+    const match = /^u(\d+)$/.exec(u.id || '');
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  return `u${maxNum + 1}`;
+}
+
+/**
+ * Create a new user account.
+ * Email is normalized to lowercase and must be unique.
+ * Password is hashed before storage.
+ *
+ * @param {Object} data - { name, email, password, role, station }
+ * @returns {{ user: Object }|{ error: string }}
+ */
+function createUser(data = {}) {
+  const db = readDB();
+
+  const email = String(data.email || '').trim().toLowerCase();
+  if (db.users.some(u => u.email.toLowerCase() === email)) {
+    return { error: 'EMAIL_TAKEN' };
+  }
+
+  const user = {
+    id: nextUserId(db.users),
+    name: String(data.name || '').trim(),
+    email,
+    password: hashPassword(String(data.password || '')),
+    role: data.role,
+    station: String(data.station || '').trim() ||
+      (data.role === 'doctor' ? 'General Clinic' : 'Triage Staff Node A'),
+  };
+
+  db.users.push(user);
+  writeDB(db);
+  return { user };
 }
 
 // ─── Patient Operations ──────────────────────────────────────────────
@@ -369,6 +414,7 @@ module.exports = {
   writeDB,
   findUserByEmail,
   findUserById,
+  createUser,
   getAllPatients,
   getPatientById,
   createPatient,

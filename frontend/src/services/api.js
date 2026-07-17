@@ -240,3 +240,27 @@ export async function sendTestData(data) {
 
   return response.json();
 }
+
+// ─── Registration API ────────────────────────────────────────────────
+
+/**
+ * Create a new staff account.
+ *
+ * @param {Object} data - { name, email, password, role, station }
+ * @returns {Promise<Object>} { success, token, user }
+ */
+export async function register({ name, email, password, role, station }) {
+  const response = await fetch(`${AUTH_BASE}/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, role, station }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Registration failed. Please try again.');
+  }
+
+  return data;
+}

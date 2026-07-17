@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useLang } from '../i18n/LanguageContext';
 
 const EMPTY_FORM = {
   name: '',
@@ -36,6 +37,7 @@ export default function PatientFormModal({
   onSubmit,
   submitting = false,
 }) {
+  const { t } = useLang();
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState('');
 
@@ -76,7 +78,7 @@ export default function PatientFormModal({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      setError('Patient name is required.');
+      setError(t('modal.nameReq'));
       return;
     }
 
@@ -112,9 +114,9 @@ export default function PatientFormModal({
         {/* Head */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-hairline dark:border-coal-700">
           <div>
-            <p className="microlabel">{mode === 'edit' ? 'Edit record' : 'New record'}</p>
+            <p className="microlabel">{mode === 'edit' ? t('modal.editKicker') : t('modal.newKicker')}</p>
             <h2 className="text-lg font-light tracking-tight text-ink dark:text-chalk mt-0.5">
-              {mode === 'edit' ? 'Edit patient' : 'Add new patient'}
+              {mode === 'edit' ? t('modal.editTitle') : t('modal.addTitle')}
             </h2>
           </div>
           <button
@@ -137,45 +139,45 @@ export default function PatientFormModal({
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <span className="font-mono text-[10px] text-med-600 dark:text-med-300">A</span>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">Patient information</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">{t('modal.secA')}</p>
                 <span className="flex-1 h-px bg-hairline dark:bg-coal-700" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="microlabel block mb-1">Full name *</label>
+                  <label className="microlabel block mb-1">{t('modal.fullName')}</label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setField('name', e.target.value)}
-                    placeholder="e.g. Somchai Jaidee"
+                    placeholder={t('modal.namePh')}
                     className="field"
                     autoFocus
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Age</label>
+                  <label className="microlabel block mb-1">{t('modal.age')}</label>
                   <input
                     type="number"
                     value={form.age}
                     onChange={(e) => setField('age', e.target.value)}
-                    placeholder="Years"
+                    placeholder={t('modal.agePh')}
                     className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Gender</label>
+                  <label className="microlabel block mb-1">{t('modal.gender')}</label>
                   <select
                     value={form.gender}
                     onChange={(e) => setField('gender', e.target.value)}
                     className="field"
                   >
-                    <option>Male</option>
-                    <option>Female</option>
-                    <option>Other</option>
+                    <option value="Male">{t('gender.male')}</option>
+                    <option value="Female">{t('gender.female')}</option>
+                    <option value="Other">{t('gender.other')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Weight (kg)</label>
+                  <label className="microlabel block mb-1">{t('modal.weightKg')}</label>
                   <input
                     type="number"
                     step="0.1"
@@ -185,7 +187,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Height (cm)</label>
+                  <label className="microlabel block mb-1">{t('modal.heightCm')}</label>
                   <input
                     type="number"
                     value={form.height}
@@ -194,12 +196,12 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="microlabel block mb-1">Check-in time</label>
+                  <label className="microlabel block mb-1">{t('modal.checkin')}</label>
                   <input
                     type="text"
                     value={form.checkInTime}
                     onChange={(e) => setField('checkInTime', e.target.value)}
-                    placeholder="e.g. 19:15 (defaults to now)"
+                    placeholder={t('modal.checkinPh')}
                     className="field font-mono !text-[13px]"
                   />
                 </div>
@@ -210,12 +212,12 @@ export default function PatientFormModal({
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <span className="font-mono text-[10px] text-med-600 dark:text-med-300">B</span>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">Initial vitals &amp; lab data</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">{t('modal.secB')}</p>
                 <span className="flex-1 h-px bg-hairline dark:bg-coal-700" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="microlabel block mb-1">SpO2 (%)</label>
+                  <label className="microlabel block mb-1">{t('modal.spo2')}</label>
                   <input
                     type="number"
                     value={form.vitals.spo2}
@@ -224,7 +226,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Heart rate (bpm)</label>
+                  <label className="microlabel block mb-1">{t('modal.hr')}</label>
                   <input
                     type="number"
                     value={form.vitals.heartRate}
@@ -233,7 +235,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Systolic BP</label>
+                  <label className="microlabel block mb-1">{t('modal.sys')}</label>
                   <input
                     type="number"
                     value={form.vitals.systolicBP}
@@ -242,7 +244,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Diastolic BP</label>
+                  <label className="microlabel block mb-1">{t('modal.dia')}</label>
                   <input
                     type="number"
                     value={form.vitals.diastolicBP}
@@ -251,7 +253,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">WBC (/mcL)</label>
+                  <label className="microlabel block mb-1">{t('modal.wbc')}</label>
                   <input
                     type="number"
                     value={form.vitals.wbc}
@@ -260,7 +262,7 @@ export default function PatientFormModal({
                   />
                 </div>
                 <div>
-                  <label className="microlabel block mb-1">Hemoglobin (g/dL)</label>
+                  <label className="microlabel block mb-1">{t('modal.hgb')}</label>
                   <input
                     type="number"
                     step="0.1"
@@ -271,7 +273,7 @@ export default function PatientFormModal({
                 </div>
               </div>
               <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2.5">
-                LEAVE BLANK FOR HEALTHY DEFAULTS — RISK SCORE IS COMPUTED AUTOMATICALLY
+                {t('modal.note')}
               </p>
             </div>
 
@@ -285,10 +287,10 @@ export default function PatientFormModal({
           {/* Footer */}
           <div className="flex justify-end gap-2 px-5 py-4 border-t border-hairline dark:border-coal-700">
             <button type="button" onClick={onClose} className="btn-line">
-              Cancel
+              {t('common.cancel')}
             </button>
             <button type="submit" disabled={submitting} className="btn-ink">
-              {submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create patient'}
+              {submitting ? t('modal.saving') : mode === 'edit' ? t('modal.saveChanges') : t('modal.create')}
             </button>
           </div>
         </form>

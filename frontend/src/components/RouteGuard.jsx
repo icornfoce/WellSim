@@ -9,9 +9,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useLang } from '../i18n/LanguageContext';
 
 export default function RouteGuard({ children }) {
   const router = useRouter();
+  const { t } = useLang();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
@@ -58,7 +60,7 @@ export default function RouteGuard({ children }) {
           <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
             <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
           </div>
-          <p className="microlabel mt-4">Verifying session</p>
+          <p className="microlabel mt-4">{t('guard.verifying')}</p>
         </div>
       </div>
     );

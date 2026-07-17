@@ -6,6 +6,7 @@
  */
 
 import './globals.css';
+import { LanguageProvider } from '../i18n/LanguageContext';
 
 export const metadata = {
   title: 'WellSim — Clinical Triage',
@@ -34,7 +35,7 @@ export default function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen bg-paper dark:bg-coal-950 antialiased transition-colors duration-300">
-        {children}
+        <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>
   );

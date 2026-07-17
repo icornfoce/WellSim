@@ -29,6 +29,8 @@ import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
 import PatientFormModal from '../components/PatientFormModal';
 import ThemeToggle from '../components/ThemeToggle';
+import LangToggle from '../components/LangToggle';
+import { useLang } from '../i18n/LanguageContext';
 import {
   fetchPatients,
   updatePatientVitals as apiUpdateVitals,
@@ -110,6 +112,7 @@ function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
 
 function Dashboard() {
   const { deviceStatus } = useDeviceData();
+  const { t } = useLang();
   const [user, setUser] = useState(null);
   const [patients, setPatients] = useState([]);
   const [patientsLoaded, setPatientsLoaded] = useState(false);
@@ -222,7 +225,7 @@ function Dashboard() {
           <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
             <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
           </div>
-          <p className="microlabel mt-4">Loading patient data</p>
+          <p className="microlabel mt-4">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -248,28 +251,28 @@ function Dashboard() {
   const getRisk = (status) => {
     switch (status) {
       case 'high': return {
-        label: 'HIGH',
+        label: t('risk.high'),
         mark: '▲',
         text: 'text-risk-high dark:text-risk-highd',
         dot: 'bg-risk-high dark:bg-risk-highd',
         stroke: 'stroke-risk-high dark:stroke-risk-highd',
       };
       case 'moderate': return {
-        label: 'MOD',
+        label: t('risk.mod'),
         mark: '▲',
         text: 'text-risk-mod dark:text-risk-modd',
         dot: 'bg-risk-mod dark:bg-risk-modd',
         stroke: 'stroke-risk-mod dark:stroke-risk-modd',
       };
       case 'low': return {
-        label: 'LOW',
+        label: t('risk.low'),
         mark: '',
         text: 'text-risk-low dark:text-risk-lowd',
         dot: 'bg-risk-low dark:bg-risk-lowd',
         stroke: 'stroke-risk-low dark:stroke-risk-lowd',
       };
       default: return {
-        label: 'PENDING',
+        label: t('risk.pending'),
         mark: '',
         text: 'text-muted dark:text-chalk-muted',
         dot: 'bg-hairline-strong dark:bg-coal-600',
@@ -340,7 +343,7 @@ function Dashboard() {
 
   const handleDeletePatient = async () => {
     if (!patient) return;
-    if (!window.confirm(`Delete patient "${patient.name}"? This action cannot be undone.`)) return;
+    if (!window.confirm(t('confirm.delete', { name: patient.name }))) return;
 
     const deletedId = patient.id;
     try {
@@ -362,13 +365,13 @@ function Dashboard() {
       <>
         <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center p-4 transition-colors duration-300">
           <div className="text-center max-w-sm animate-fade-up">
-            <p className="microlabel">Queue empty</p>
-            <h2 className="text-2xl font-light text-ink dark:text-chalk mt-2">No patients yet</h2>
+            <p className="microlabel">{t('empty.label')}</p>
+            <h2 className="text-2xl font-light text-ink dark:text-chalk mt-2">{t('empty.title')}</h2>
             <p className="text-sm text-muted dark:text-chalk-muted mt-2 leading-relaxed">
-              The triage queue is empty. Add a patient record to get started.
+              {t('empty.body')}
             </p>
             <button onClick={openAddModal} className="btn-ink mt-6">
-              <Plus className="w-3.5 h-3.5" /> Add patient
+              <Plus className="w-3.5 h-3.5" /> {t('empty.add')}
             </button>
           </div>
         </div>
@@ -413,7 +416,7 @@ function Dashboard() {
                   ? 'bg-med-500 dark:bg-med-300 animate-blink'
                   : 'bg-risk-high dark:bg-risk-highd'
               }`} />
-              IOT {deviceStatus?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+              {deviceStatus?.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
             </span>
             <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
             <span className="tabular-nums text-ink dark:text-chalk">
@@ -423,6 +426,7 @@ function Dashboard() {
 
           {/* User / theme */}
           <div className="flex items-center gap-3">
+            <LangToggle />
             <ThemeToggle />
             <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
             <div className="text-right hidden sm:block leading-tight">
@@ -433,7 +437,7 @@ function Dashboard() {
             </div>
             <button
               onClick={onLogout}
-              title="Sign out"
+              title={t('header.signOut')}
               className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                          text-muted hover:text-risk-high hover:border-risk-high/50
                          dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
@@ -457,19 +461,19 @@ function Dashboard() {
 
             {/* Panel head */}
             <div className="p-4 border-b border-hairline dark:border-coal-700">
-              <SectionHead index="01" title="Patient Queue">
+              <SectionHead index="01" title={t('queue.title')}>
                 <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">N={patients.length}</span>
                 <button
                   onClick={loadPatients}
-                  title="Reload patient list"
+                  title={t('queue.refresh')}
                   className="w-6 h-6 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                              text-muted hover:text-ink hover:border-ink/50 dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
                              transition-colors duration-200 group"
                 >
                   <RefreshCw className="w-3 h-3 transition-transform duration-500 group-hover:rotate-180" />
                 </button>
-                <button onClick={openAddModal} className="btn-ink !px-2.5 !py-1" title="Add new patient">
-                  <Plus className="w-3 h-3" /> Add
+                <button onClick={openAddModal} className="btn-ink !px-2.5 !py-1" title={t('queue.addTitle')}>
+                  <Plus className="w-3 h-3" /> {t('queue.add')}
                 </button>
               </SectionHead>
 
@@ -478,7 +482,7 @@ function Dashboard() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted/70 dark:text-chalk-muted/70" />
                 <input
                   type="text"
-                  placeholder="Search patients…"
+                  placeholder={t('queue.search')}
                   className="field !pl-9 !py-1.5 !text-[13px]"
                 />
               </div>
@@ -511,7 +515,7 @@ function Dashboard() {
                           {item.name}
                         </span>
                         <span className="block font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5">
-                          AGE {item.age} · {item.checkInTime}
+                          {t('queue.age')} {item.age} · {item.checkInTime}
                         </span>
                       </span>
                     </span>
@@ -533,7 +537,7 @@ function Dashboard() {
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-med-600 dark:text-med-300">
-                  Active record / {patient.id.toUpperCase()}
+                  {t('record.active')} / {patient.id.toUpperCase()}
                 </p>
                 <h1 className="text-[28px] font-light tracking-tight text-ink dark:text-chalk mt-1 leading-tight">
                   {patient.name}
@@ -541,22 +545,22 @@ function Dashboard() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button onClick={openEditModal} className="btn-line" title="Edit patient details">
-                  <Pencil className="w-3 h-3" /> Edit
+                <button onClick={openEditModal} className="btn-line" title={t('record.editTitle')}>
+                  <Pencil className="w-3 h-3" /> {t('common.edit')}
                 </button>
                 <button
                   onClick={handleDeletePatient}
-                  title="Delete patient"
+                  title={t('record.deleteTitle')}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded
                              border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
                              dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
                              transition-colors duration-200 active:translate-y-px"
                 >
-                  <Trash2 className="w-3 h-3" /> Delete
+                  <Trash2 className="w-3 h-3" /> {t('common.delete')}
                 </button>
                 <span className="w-px h-6 bg-hairline dark:bg-coal-700 mx-1" />
                 <div className="text-right">
-                  <p className="microlabel">AI risk</p>
+                  <p className="microlabel">{t('record.aiRisk')}</p>
                   <p className={`font-mono text-xs mt-0.5 ${risk.text}`}>
                     {risk.mark && <span className="mr-1">{risk.mark}</span>}{risk.label}
                   </p>
@@ -567,10 +571,10 @@ function Dashboard() {
             {/* Demographics — ruled table */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
               {[
-                { label: 'Age', value: `${patient.age}`, unit: 'yrs' },
-                { label: 'Gender', value: patient.gender, unit: '' },
-                { label: 'Weight', value: `${patient.weight}`, unit: 'kg' },
-                { label: 'Height', value: `${patient.height}`, unit: 'cm' },
+                { label: t('demo.age'), value: `${patient.age}`, unit: t('demo.yrs') },
+                { label: t('demo.gender'), value: ['male','female','other'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : patient.gender, unit: '' },
+                { label: t('demo.weight'), value: `${patient.weight}`, unit: 'kg' },
+                { label: t('demo.height'), value: `${patient.height}`, unit: 'cm' },
                 { label: 'BMI', value: bmiValue, unit: getBMICategory(bmiValue) },
               ].map(({ label, value, unit }) => (
                 <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
@@ -586,16 +590,16 @@ function Dashboard() {
 
           {/* Vitals */}
           <div className="card p-5 will-fade-up animate-delay-200">
-            <SectionHead index="02" title="Lab Results & Data Fusion">
+            <SectionHead index="02" title={t('vitals.title')}>
               {isEditing ? (
                 <span className="flex gap-2">
-                  <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">Cancel</button>
+                  <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">{t('common.cancel')}</button>
                   <button onClick={saveVitals} className="btn-ink !py-1.5">
-                    <Check className="w-3 h-3" /> Save
+                    <Check className="w-3 h-3" /> {t('common.save')}
                   </button>
                 </span>
               ) : (
-                <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">Edit vitals</button>
+                <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">{t('vitals.edit')}</button>
               )}
             </SectionHead>
 
@@ -604,9 +608,9 @@ function Dashboard() {
               {/* SpO2 */}
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
-                  <p className="microlabel">SpO2 · Oxygen</p>
+                  <p className="microlabel">{t('vitals.spo2')}</p>
                   {(patient?.vitals?.spo2 || 0) < 95 && (
-                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▼ LOW</span>
+                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▼ {t('tag.low')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -626,15 +630,15 @@ function Dashboard() {
                 )}
                 <TickBar value={patient?.vitals?.spo2} min={85} max={100} okMin={95} okMax={100}
                   tone={(patient?.vitals?.spo2 || 0) < 95 ? 'bad' : 'ok'} />
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 95–100</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 95–100</p>
               </div>
 
               {/* Heart rate */}
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
-                  <p className="microlabel">Heart rate</p>
+                  <p className="microlabel">{t('vitals.hr')}</p>
                   {(patient?.vitals?.heartRate || 0) > 100 && (
-                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▲ HIGH</span>
+                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -654,15 +658,15 @@ function Dashboard() {
                 )}
                 <TickBar value={patient?.vitals?.heartRate} min={40} max={140} okMin={60} okMax={100}
                   tone={(patient?.vitals?.heartRate || 0) > 100 ? 'bad' : 'ok'} />
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 60–100</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 60–100</p>
               </div>
 
               {/* Blood pressure */}
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
-                  <p className="microlabel">Blood pressure</p>
+                  <p className="microlabel">{t('vitals.bp')}</p>
                   {(patient?.vitals?.systolicBP || 0) > 140 && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ HIGH</span>
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -691,15 +695,15 @@ function Dashboard() {
                 )}
                 <TickBar value={patient?.vitals?.systolicBP} min={80} max={180} okMin={90} okMax={120}
                   tone={(patient?.vitals?.systolicBP || 0) > 140 ? 'warn' : 'ok'} />
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF &lt;120/80</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} &lt;120/80</p>
               </div>
 
               {/* WBC */}
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
-                  <p className="microlabel">WBC count</p>
+                  <p className="microlabel">{t('vitals.wbc')}</p>
                   {(patient?.vitals?.wbc || 0) > 11000 && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ HIGH</span>
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -719,15 +723,15 @@ function Dashboard() {
                 )}
                 <TickBar value={patient?.vitals?.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
                   tone={(patient?.vitals?.wbc || 0) > 11000 ? 'warn' : 'ok'} />
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 4,500–11,000</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 4,500–11,000</p>
               </div>
 
               {/* Hemoglobin */}
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
-                  <p className="microlabel">Hemoglobin</p>
+                  <p className="microlabel">{t('vitals.hgb')}</p>
                   {(patient?.vitals?.hemoglobin || 0) < 12 && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▼ LOW</span>
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▼ {t('tag.low')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -748,13 +752,13 @@ function Dashboard() {
                 )}
                 <TickBar value={patient?.vitals?.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
                   tone={(patient?.vitals?.hemoglobin || 0) < 12 ? 'warn' : 'ok'} />
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 12.0–17.5</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 12.0–17.5</p>
               </div>
 
               {/* Reserved slot */}
               <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
-                <p className="microlabel">Reserved</p>
-                <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">ECG / SPIROMETER</p>
+                <p className="microlabel">{t('vitals.reserved')}</p>
+                <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">{t('vitals.reservedNote')}</p>
               </div>
 
             </div>
@@ -762,7 +766,7 @@ function Dashboard() {
 
           {/* Bio-acoustics */}
           <div className="card p-5 will-fade-up animate-delay-300">
-            <SectionHead index="03" title="Bio-Acoustics">
+            <SectionHead index="03" title={t('audio.title')}>
               <div className="flex gap-4">
                 {['lung', 'heart', 'cough'].map((tab) => (
                   <button
@@ -778,7 +782,7 @@ function Dashboard() {
                         : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
                     }`}
                   >
-                    {tab}
+                    {t('audio.' + tab)}
                   </button>
                 ))}
               </div>
@@ -788,8 +792,8 @@ function Dashboard() {
               {patient?.audioLogs?.[activeAudioTab]?.available ? (
                 <div>
                   <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
-                    <span className="truncate pr-4">SRC · {patient?.audioLogs?.[activeAudioTab]?.status || 'Status unavailable'}</span>
-                    <span className="shrink-0">DUR {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
+                    <span className="truncate pr-4">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status || t('audio.statusUnavailable')}</span>
+                    <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
                   {/* Player — an ink panel in both themes */}
@@ -831,9 +835,9 @@ function Dashboard() {
                 </div>
               ) : (
                 <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-8 text-center">
-                  <p className="microlabel">No recording</p>
+                  <p className="microlabel">{t('audio.none')}</p>
                   <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5">
-                    THIS DIAGNOSTIC AUDIO WAS NOT CAPTURED
+                    {t('audio.noneDetail')}
                   </p>
                 </div>
               )}
@@ -842,7 +846,7 @@ function Dashboard() {
 
           {/* AI analysis */}
           <div className="card p-5 will-fade-up animate-delay-400">
-            <SectionHead index="04" title="AI Analysis & Decision" />
+            <SectionHead index="04" title={t('ai.title')} />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center mt-5">
 
@@ -877,17 +881,17 @@ function Dashboard() {
                       {patient?.riskScore || 0}
                       <span className="font-mono text-sm text-muted dark:text-chalk-muted ml-0.5">%</span>
                     </span>
-                    <span className="microlabel mt-1.5">Probability</span>
+                    <span className="microlabel mt-1.5">{t('ai.probability')}</span>
                   </div>
                 </div>
                 <p className={`font-mono text-[11px] mt-3 ${risk.text}`}>
-                  {risk.mark && <span className="mr-1">{risk.mark}</span>}{risk.label} RISK
+                  {risk.mark && <span className="mr-1">{risk.mark}</span>}{t('ai.riskLine', { label: risk.label })}
                 </p>
               </div>
 
               {/* Findings */}
               <div className="md:col-span-2">
-                <p className="microlabel">Diagnostic biomarkers</p>
+                <p className="microlabel">{t('ai.biomarkers')}</p>
                 <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
                   {(patient?.findings || []).map((finding, idx) => (
                     <li key={idx} className="flex items-start gap-3 py-2.5">
@@ -904,26 +908,26 @@ function Dashboard() {
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-2 mt-5 pt-5 border-t border-hairline dark:border-coal-700 print-hidden">
               <button
-                onClick={() => alert(`Triage for ${patient.name} approved. Sent to duty doctor.`)}
+                onClick={() => alert(t('alerts.approved', { name: patient.name }))}
                 className="btn-ink flex-1"
               >
-                Approve triage &amp; send
+                {t('actions.approve')}
               </button>
               <button
-                onClick={() => alert(`Triggering re-recording on WellSim IoT device...`)}
+                onClick={() => alert(t('alerts.retake'))}
                 className="btn-line flex-1"
               >
-                Re-take recording
+                {t('actions.retake')}
               </button>
               <button onClick={() => window.print()} className="btn-line flex-1">
-                <Printer className="w-3.5 h-3.5" /> Print summary
+                <Printer className="w-3.5 h-3.5" /> {t('actions.print')}
               </button>
             </div>
           </div>
 
           {/* Colophon */}
           <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
-            WellSim · Clinical triage system · Prototype
+            {t('colophon')}
           </p>
         </section>
       </main>

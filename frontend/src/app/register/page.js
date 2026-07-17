@@ -1,19 +1,18 @@
 /**
- * WellSim — Login Page (UI v3 "Instrument")
+ * WellSim — Register Page (UI v3 "Instrument")
  *
- * Quiet, editorial sign-in. Validates credentials against the
- * Express backend. Theme-aware; one thin ECG trace as the only
- * ornament — and even that is telemetry.
+ * Creates a real staff account against the Express backend
+ * (POST /api/auth/register), then signs the user straight in.
  */
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
+import { register } from '../../services/api';
 
 function PulseMark({ className = 'w-4 h-4' }) {
   return (
@@ -30,16 +29,19 @@ function PulseMark({ className = 'w-4 h-4' }) {
   );
 }
 
-export default function LoginPage() {
-  const router = useRouter();
+export default function RegisterPage() {
   const { t } = useLang();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState('nurse');
+  const [station, setStation] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if already logged in
+  // Already signed in → go straight to the dashboard
   useEffect(() => {
     const token = localStorage.getItem('wellsim_token');
     if (token) {
@@ -50,52 +52,46 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
+    // Client-side checks mirror the backend rules
+    if (name.trim().length < 2) {
+      setError(t('register.errName'));
+      return;
+    }
+    if (password.length < 6) {
+      setError(t('register.errPass'));
+      return;
+    }
+    if (password !== confirm) {
+      setError(t('register.errMatch'));
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const API_URL = 'https://wellsim-backend.onrender.com';
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const data = await register({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        role,
+        station: station.trim(),
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        setError(data.error || t('login.failed'));
-        setIsLoading(false);
-        return;
-      }
-
-      // Store token and user info
+      // Auto-login with the returned token
       localStorage.setItem('wellsim_token', data.token);
       localStorage.setItem('wellsim_user', JSON.stringify(data.user));
-
-      // Redirect to dashboard
       window.location.href = '/';
     } catch (err) {
-      setError(t('login.netError'));
+      setError(err.message || t('login.netError'));
       setIsLoading(false);
     }
   };
 
-  const fillCredentials = (role) => {
-    if (role === 'nurse') {
-      setEmail('nurse@wellsim.com');
-      setPassword('password123');
-    } else {
-      setEmail('doctor@wellsim.com');
-      setPassword('password123');
-    }
-    setError('');
-  };
-
   return (
-    <div className="min-h-screen bg-paper dark:bg-coal-950 transition-colors duration-300 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-paper dark:bg-coal-950 transition-colors duration-300 flex items-center justify-center p-4 py-16">
 
       {/* Brand — pinned to the page corner like a letterhead */}
-      <div className="fixed top-5 left-5 sm:top-6 sm:left-6 flex items-center gap-3 animate-fade-in">
+      <div className="fixed top-5 left-5 sm:top-6 sm:left-6 flex items-center gap-3 animate-fade-in z-10">
         <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
           <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
         </div>
@@ -105,12 +101,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="fixed top-5 right-5 sm:top-6 sm:right-6 animate-fade-in flex items-center gap-2">
+      <div className="fixed top-5 right-5 sm:top-6 sm:right-6 animate-fade-in z-10 flex items-center gap-2">
         <LangToggle />
         <ThemeToggle />
       </div>
 
-      {/* One thin ECG trace along the bottom — telemetry as ornament */}
+      {/* One thin ECG trace along the bottom */}
       <svg
         viewBox="0 0 1200 60"
         preserveAspectRatio="none"
@@ -124,13 +120,13 @@ export default function LoginPage() {
         />
       </svg>
 
-      {/* Sign-in card */}
+      {/* Registration card */}
       <div className="w-full max-w-sm will-fade-up">
         <div className="card p-7">
-          <p className="microlabel">{t('login.kicker')}</p>
-          <h1 className="text-2xl font-light tracking-tight text-ink dark:text-chalk mt-1.5">{t('login.title')}</h1>
+          <p className="microlabel">{t('register.kicker')}</p>
+          <h1 className="text-2xl font-light tracking-tight text-ink dark:text-chalk mt-1.5">{t('register.title')}</h1>
           <p className="text-xs text-muted dark:text-chalk-muted mt-1.5 leading-relaxed">
-            {t('login.subtitle')}
+            {t('register.subtitle')}
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -139,6 +135,19 @@ export default function LoginPage() {
                 <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
               </div>
             )}
+
+            <div>
+              <label className="microlabel block mb-1.5">{t('register.fullName')}</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('register.namePh')}
+                required
+                className="field"
+                autoFocus
+              />
+            </div>
 
             <div>
               <label className="microlabel block mb-1.5">{t('login.email')}</label>
@@ -152,6 +161,40 @@ export default function LoginPage() {
               />
             </div>
 
+            {/* Role — segmented control */}
+            <div>
+              <label className="microlabel block mb-1.5">{t('register.role')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRole('nurse')}
+                  aria-pressed={role === 'nurse'}
+                  className={role === 'nurse' ? 'btn-ink !py-2' : 'btn-line !py-2'}
+                >
+                  {t('register.nurse')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('doctor')}
+                  aria-pressed={role === 'doctor'}
+                  className={role === 'doctor' ? 'btn-ink !py-2' : 'btn-line !py-2'}
+                >
+                  {t('register.doctor')}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="microlabel block mb-1.5">{t('register.station')} <span className="normal-case tracking-normal">{t('register.optional')}</span></label>
+              <input
+                type="text"
+                value={station}
+                onChange={(e) => setStation(e.target.value)}
+                placeholder={role === 'doctor' ? t('register.stationPhDoctor') : t('register.stationPhNurse')}
+                className="field"
+              />
+            </div>
+
             <div>
               <label className="microlabel block mb-1.5">{t('login.password')}</label>
               <div className="relative">
@@ -159,8 +202,9 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={t('register.passwordPh')}
                   required
+                  minLength={6}
                   className="field !pr-10"
                 />
                 <button
@@ -174,38 +218,48 @@ export default function LoginPage() {
               </div>
             </div>
 
+            <div>
+              <label className="microlabel block mb-1.5">{t('register.confirm')}</label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder={t('register.confirmPh')}
+                required
+                minLength={6}
+                className="field"
+              />
+              {confirm.length > 0 && (
+                <p className={`font-mono text-[10px] mt-1.5 ${
+                  password === confirm
+                    ? 'text-med-600 dark:text-med-300'
+                    : 'text-risk-high dark:text-risk-highd'
+                }`}>
+                  {password === confirm ? t('register.match') : t('register.noMatch')}
+                </p>
+              )}
+            </div>
+
             <button type="submit" disabled={isLoading} className="btn-ink w-full !py-2.5">
               {isLoading ? (
                 <>
                   <span className="relative w-16 h-px bg-white/30 dark:bg-coal-950/30 overflow-hidden inline-block">
                     <span className="absolute inset-y-0 w-6 bg-white dark:bg-coal-950 animate-sweep" />
                   </span>
-                  {t('login.submitting')}
+                  {t('register.submitting')}
                 </>
               ) : (
-                t('login.submit')
+                t('register.submit')
               )}
             </button>
           </form>
 
-          {/* Demo access */}
-          <div className="mt-6 pt-5 border-t border-hairline dark:border-coal-700">
-            <p className="microlabel mb-2.5">{t('login.demo')}</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => fillCredentials('nurse')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
-                {t('login.nurse')}
-              </button>
-              <button onClick={() => fillCredentials('doctor')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
-                {t('login.doctor')}
-              </button>
-            </div>
-            <p className="text-xs text-muted dark:text-chalk-muted mt-4 text-center">
-              {t('login.noAccount')}{' '}
-              <a href="/register" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
-                {t('login.create')}
-              </a>
-            </p>
-          </div>
+          <p className="text-xs text-muted dark:text-chalk-muted mt-5 pt-5 border-t border-hairline dark:border-coal-700 text-center">
+            {t('register.have')}{' '}
+            <a href="/login" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
+              {t('register.signIn')}
+            </a>
+          </p>
         </div>
 
         <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] mt-5">
