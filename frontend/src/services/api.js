@@ -264,3 +264,22 @@ export async function register({ name, email, password, role, station }) {
 
   return data;
 }
+
+/**
+ * Fetch the logged-in patient's own triage record.
+ *
+ * @returns {Promise<Object>} { success, patient }
+ */
+export async function fetchMyRecord() {
+  const response = await fetch(`${PATIENTS_BASE}/me`, {
+    headers: getAuthHeaders(),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Failed to fetch your record.');
+  }
+
+  return data;
+}

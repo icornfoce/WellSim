@@ -226,12 +226,50 @@ function createUser(data = {}) {
     password: hashPassword(String(data.password || '')),
     role: data.role,
     station: String(data.station || '').trim() ||
-      (data.role === 'doctor' ? 'General Clinic' : 'Triage Staff Node A'),
+      (data.role === 'doctor'
+        ? 'General Clinic'
+        : data.role === 'patient'
+          ? 'OPD'
+          : 'Triage Staff Node A'),
   };
 
   db.users.push(user);
   writeDB(db);
   return { user };
+}
+
+/**
+ * Find the triage record that belongs to a patient user account.
+ */
+function getPatientByUserId(userId) {
+  const db = readDB();
+  return db.patients.find(p => p.userId === userId) || null;
+}
+
+/**
+ * Create an empty (bare) triage record for a self-registered patient.
+ * No vitals, no findings, risk = pending. Staff fill it in later;
+ * the UI shows "—" for anything not yet measured.
+ */
+function createBarePatientRecord(user) {
+  const db = readDB();
+  const patient = {
+    id: nextPatientId(db.patients),
+    userId: user.id,
+    name: String(user.name || '').trim() || 'Unnamed Patient',
+    age: null,
+    gender: 'Unspecified',
+    weight: null,
+    height: null,
+    checkInTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    vitals: null,
+    riskScore: 0,
+    riskStatus: 'pending',
+    findings: [],
+  };
+  db.patients.push(patient);
+  writeDB(db);
+  return patient;
 }
 
 // ─── Patient Operations ──────────────────────────────────────────────
@@ -415,6 +453,8 @@ module.exports = {
   findUserByEmail,
   findUserById,
   createUser,
+  getPatientByUserId,
+  createBarePatientRecord,
   getAllPatients,
   getPatientById,
   createPatient,

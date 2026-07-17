@@ -23,6 +23,8 @@ const {
   updatePatient,
   deletePatient,
   updatePatientVitals,
+  getPatientByUserId,
+  createBarePatientRecord,
 } = require('../services/dbService');
 
 // ─── GET /api/patients ───────────────────────────────────────────────
@@ -39,6 +41,38 @@ router.get('/', requireAuth, (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Internal server error while fetching patients.',
+    });
+  }
+});
+
+// ─── GET /api/patients/me ────────────────────────────────────────────
+// A patient's own triage record. Patient accounts only.
+// Must be registered BEFORE /:id so "me" is not treated as an ID.
+router.get('/me', requireAuth, (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({
+        success: false,
+        error: 'This endpoint is for patient accounts only.',
+      });
+    }
+
+    let patient = getPatientByUserId(req.user.userId);
+
+    // Accounts created before this feature: create the record lazily
+    if (!patient) {
+      patient = createBarePatientRecord({ id: req.user.userId, name: req.user.name });
+    }
+
+    res.status(200).json({
+      success: true,
+      patient,
+    });
+  } catch (error) {
+    console.error('❌ Error fetching own record:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching your record.',
     });
   }
 });

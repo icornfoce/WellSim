@@ -11,11 +11,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { findUserByEmail, createUser, verifyPassword } = require('../services/dbService');
+const { findUserByEmail, createUser, verifyPassword, createBarePatientRecord } = require('../services/dbService');
 const { generateToken, requireAuth } = require('../middleware/auth');
 
 // ─── POST /api/auth/register ─────────────────────────────────────────
-const ALLOWED_ROLES = ['nurse', 'doctor'];
+const ALLOWED_ROLES = ['nurse', 'doctor', 'patient'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 router.post('/register', (req, res) => {
@@ -44,7 +44,7 @@ router.post('/register', (req, res) => {
     if (!ALLOWED_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        error: 'Role must be either "nurse" or "doctor".',
+        error: 'Role must be "nurse", "doctor", or "patient".',
       });
     }
 
@@ -58,6 +58,16 @@ router.post('/register', (req, res) => {
     }
 
     const user = result.user;
+
+    // Patients get an empty triage record straight away,
+    // linked by userId, so the portal always has something to show.
+    if (user.role === 'patient') {
+      try {
+        createBarePatientRecord(user);
+      } catch (e) {
+        console.error('⚠️ Could not create bare patient record:', e.message);
+      }
+    }
 
     // Auto-login: issue a token right away
     const token = generateToken(user);

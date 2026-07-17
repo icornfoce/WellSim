@@ -45,7 +45,11 @@ export default function RegisterPage() {
   useEffect(() => {
     const token = localStorage.getItem('wellsim_token');
     if (token) {
-      window.location.href = '/';
+      let role = null;
+      try {
+        role = JSON.parse(localStorage.getItem('wellsim_user') || 'null')?.role;
+      } catch { /* ignore */ }
+      window.location.href = role === 'patient' ? '/portal' : '/';
     }
   }, []);
 
@@ -80,7 +84,7 @@ export default function RegisterPage() {
       // Auto-login with the returned token
       localStorage.setItem('wellsim_token', data.token);
       localStorage.setItem('wellsim_user', JSON.stringify(data.user));
-      window.location.href = '/';
+      window.location.href = data.user.role === 'patient' ? '/portal' : '/';
     } catch (err) {
       setError(err.message || t('login.netError'));
       setIsLoading(false);
@@ -164,7 +168,7 @@ export default function RegisterPage() {
             {/* Role — segmented control */}
             <div>
               <label className="microlabel block mb-1.5">{t('register.role')}</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setRole('nurse')}
@@ -181,19 +185,29 @@ export default function RegisterPage() {
                 >
                   {t('register.doctor')}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('patient')}
+                  aria-pressed={role === 'patient'}
+                  className={role === 'patient' ? 'btn-ink !py-2' : 'btn-line !py-2'}
+                >
+                  {t('register.patient')}
+                </button>
               </div>
             </div>
 
-            <div>
-              <label className="microlabel block mb-1.5">{t('register.station')} <span className="normal-case tracking-normal">{t('register.optional')}</span></label>
-              <input
-                type="text"
-                value={station}
-                onChange={(e) => setStation(e.target.value)}
-                placeholder={role === 'doctor' ? t('register.stationPhDoctor') : t('register.stationPhNurse')}
-                className="field"
-              />
-            </div>
+            {role !== 'patient' && (
+              <div>
+                <label className="microlabel block mb-1.5">{t('register.station')} <span className="normal-case tracking-normal">{t('register.optional')}</span></label>
+                <input
+                  type="text"
+                  value={station}
+                  onChange={(e) => setStation(e.target.value)}
+                  placeholder={role === 'doctor' ? t('register.stationPhDoctor') : t('register.stationPhNurse')}
+                  className="field"
+                />
+              </div>
+            )}
 
             <div>
               <label className="microlabel block mb-1.5">{t('login.password')}</label>

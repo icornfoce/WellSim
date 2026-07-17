@@ -46,6 +46,15 @@ const DEFAULT_AUDIO_LOGS = {
   cough: { available: false, status: 'Not recorded', duration: '0:00' }
 };
 
+const NO_AUDIO_LOGS = {
+  lung: { available: false, status: 'Not recorded', duration: '0:00' },
+  heart: { available: false, status: 'Not recorded', duration: '0:00' },
+  cough: { available: false, status: 'Not recorded', duration: '0:00' },
+};
+
+// Only the seeded demo patients ship with sample recordings
+const DEMO_AUDIO_IDS = ['p1', 'p2', 'p3'];
+
 export default function Page() {
   return (
     <RouteGuard>
@@ -142,7 +151,7 @@ function Dashboard() {
         // Add client-side audio logs to each patient
         const patientsWithAudio = res.patients.map(p => ({
           ...p,
-          audioLogs: p.audioLogs || DEFAULT_AUDIO_LOGS,
+          audioLogs: p.audioLogs || (DEMO_AUDIO_IDS.includes(p.id) ? DEFAULT_AUDIO_LOGS : NO_AUDIO_LOGS),
         }));
         setPatients(patientsWithAudio);
         if (!selectedPatientId && patientsWithAudio.length > 0) {
@@ -165,7 +174,12 @@ function Dashboard() {
     const userStr = localStorage.getItem('wellsim_user');
     if (userStr) {
       try {
-        setUser(JSON.parse(userStr));
+        const parsed = JSON.parse(userStr);
+        if (parsed?.role === 'patient') {
+          window.location.replace('/portal');
+          return;
+        }
+        setUser(parsed);
       } catch (e) {
         console.error('Failed to parse user data:', e);
       }
@@ -389,6 +403,8 @@ function Dashboard() {
 
   const risk = getRisk(patient?.riskStatus);
   const bmiValue = calculateBMI(patient.weight, patient.height);
+  const v = patient?.vitals || {};
+  const has = (x) => x !== null && x !== undefined;
 
   return (
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
@@ -515,7 +531,7 @@ function Dashboard() {
                           {item.name}
                         </span>
                         <span className="block font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5">
-                          {t('queue.age')} {item.age} · {item.checkInTime}
+                          {t('queue.age')} {item.age ?? '—'} · {item.checkInTime}
                         </span>
                       </span>
                     </span>
@@ -571,10 +587,10 @@ function Dashboard() {
             {/* Demographics — ruled table */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
               {[
-                { label: t('demo.age'), value: `${patient.age}`, unit: t('demo.yrs') },
-                { label: t('demo.gender'), value: ['male','female','other'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : patient.gender, unit: '' },
-                { label: t('demo.weight'), value: `${patient.weight}`, unit: 'kg' },
-                { label: t('demo.height'), value: `${patient.height}`, unit: 'cm' },
+                { label: t('demo.age'), value: patient.age ?? '—', unit: patient.age != null ? t('demo.yrs') : '' },
+                { label: t('demo.gender'), value: ['male','female','other','unspecified'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : (patient.gender ?? '—'), unit: '' },
+                { label: t('demo.weight'), value: patient.weight ?? '—', unit: patient.weight != null ? 'kg' : '' },
+                { label: t('demo.height'), value: patient.height ?? '—', unit: patient.height != null ? 'cm' : '' },
                 { label: 'BMI', value: bmiValue, unit: getBMICategory(bmiValue) },
               ].map(({ label, value, unit }) => (
                 <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
@@ -609,7 +625,7 @@ function Dashboard() {
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.spo2')}</p>
-                  {(patient?.vitals?.spo2 || 0) < 95 && (
+                  {(has(v.spo2) && v.spo2 < 95) && (
                     <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▼ {t('tag.low')}</span>
                   )}
                 </div>
@@ -622,14 +638,14 @@ function Dashboard() {
                   />
                 ) : (
                   <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (patient?.vitals?.spo2 || 0) < 95 ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
+                    (has(v.spo2) && v.spo2 < 95) ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
                   }`}>
-                    {patient?.vitals?.spo2 || 0}
+                    {has(v.spo2) ? v.spo2 : '—'}
                     <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1">%</span>
                   </p>
                 )}
-                <TickBar value={patient?.vitals?.spo2} min={85} max={100} okMin={95} okMax={100}
-                  tone={(patient?.vitals?.spo2 || 0) < 95 ? 'bad' : 'ok'} />
+                {has(v.spo2) && <TickBar value={v.spo2} min={85} max={100} okMin={95} okMax={100}
+                  tone={v.spo2 < 95 ? 'bad' : 'ok'} />}
                 <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 95–100</p>
               </div>
 
@@ -637,7 +653,7 @@ function Dashboard() {
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.hr')}</p>
-                  {(patient?.vitals?.heartRate || 0) > 100 && (
+                  {(has(v.heartRate) && v.heartRate > 100) && (
                     <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▲ {t('tag.high')}</span>
                   )}
                 </div>
@@ -650,14 +666,14 @@ function Dashboard() {
                   />
                 ) : (
                   <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (patient?.vitals?.heartRate || 0) > 100 ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
+                    (has(v.heartRate) && v.heartRate > 100) ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
                   }`}>
-                    {patient?.vitals?.heartRate || 0}
+                    {has(v.heartRate) ? v.heartRate : '—'}
                     <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">bpm</span>
                   </p>
                 )}
-                <TickBar value={patient?.vitals?.heartRate} min={40} max={140} okMin={60} okMax={100}
-                  tone={(patient?.vitals?.heartRate || 0) > 100 ? 'bad' : 'ok'} />
+                {has(v.heartRate) && <TickBar value={v.heartRate} min={40} max={140} okMin={60} okMax={100}
+                  tone={v.heartRate > 100 ? 'bad' : 'ok'} />}
                 <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 60–100</p>
               </div>
 
@@ -665,7 +681,7 @@ function Dashboard() {
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.bp')}</p>
-                  {(patient?.vitals?.systolicBP || 0) > 140 && (
+                  {(has(v.systolicBP) && v.systolicBP > 140) && (
                     <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
@@ -687,14 +703,14 @@ function Dashboard() {
                   </div>
                 ) : (
                   <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (patient?.vitals?.systolicBP || 0) > 140 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                    (has(v.systolicBP) && v.systolicBP > 140) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
                   }`}>
-                    {patient?.vitals?.systolicBP || 120}/{patient?.vitals?.diastolicBP || 80}
+                    {has(v.systolicBP) ? v.systolicBP : '—'}/{has(v.diastolicBP) ? v.diastolicBP : '—'}
                     <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">mmHg</span>
                   </p>
                 )}
-                <TickBar value={patient?.vitals?.systolicBP} min={80} max={180} okMin={90} okMax={120}
-                  tone={(patient?.vitals?.systolicBP || 0) > 140 ? 'warn' : 'ok'} />
+                {has(v.systolicBP) && <TickBar value={v.systolicBP} min={80} max={180} okMin={90} okMax={120}
+                  tone={v.systolicBP > 140 ? 'warn' : 'ok'} />}
                 <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} &lt;120/80</p>
               </div>
 
@@ -702,7 +718,7 @@ function Dashboard() {
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.wbc')}</p>
-                  {(patient?.vitals?.wbc || 0) > 11000 && (
+                  {(has(v.wbc) && v.wbc > 11000) && (
                     <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
@@ -715,14 +731,14 @@ function Dashboard() {
                   />
                 ) : (
                   <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (patient?.vitals?.wbc || 0) > 11000 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                    (has(v.wbc) && v.wbc > 11000) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
                   }`}>
-                    {(patient?.vitals?.wbc || 0).toLocaleString()}
+                    {has(v.wbc) ? v.wbc.toLocaleString() : '—'}
                     <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">/mcL</span>
                   </p>
                 )}
-                <TickBar value={patient?.vitals?.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
-                  tone={(patient?.vitals?.wbc || 0) > 11000 ? 'warn' : 'ok'} />
+                {has(v.wbc) && <TickBar value={v.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
+                  tone={v.wbc > 11000 ? 'warn' : 'ok'} />}
                 <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 4,500–11,000</p>
               </div>
 
@@ -730,7 +746,7 @@ function Dashboard() {
               <div className="bg-surface dark:bg-coal-900 p-4">
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.hgb')}</p>
-                  {(patient?.vitals?.hemoglobin || 0) < 12 && (
+                  {(has(v.hemoglobin) && v.hemoglobin < 12) && (
                     <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▼ {t('tag.low')}</span>
                   )}
                 </div>
@@ -744,14 +760,14 @@ function Dashboard() {
                   />
                 ) : (
                   <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (patient?.vitals?.hemoglobin || 0) < 12 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                    (has(v.hemoglobin) && v.hemoglobin < 12) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
                   }`}>
-                    {patient?.vitals?.hemoglobin || 0}
+                    {has(v.hemoglobin) ? v.hemoglobin : '—'}
                     <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">g/dL</span>
                   </p>
                 )}
-                <TickBar value={patient?.vitals?.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
-                  tone={(patient?.vitals?.hemoglobin || 0) < 12 ? 'warn' : 'ok'} />
+                {has(v.hemoglobin) && <TickBar value={v.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
+                  tone={v.hemoglobin < 12 ? 'warn' : 'ok'} />}
                 <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 12.0–17.5</p>
               </div>
 

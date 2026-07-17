@@ -43,7 +43,11 @@ export default function LoginPage() {
   useEffect(() => {
     const token = localStorage.getItem('wellsim_token');
     if (token) {
-      window.location.href = '/';
+      let role = null;
+      try {
+        role = JSON.parse(localStorage.getItem('wellsim_user') || 'null')?.role;
+      } catch { /* ignore */ }
+      window.location.href = role === 'patient' ? '/portal' : '/';
     }
   }, []);
 
@@ -72,8 +76,8 @@ export default function LoginPage() {
       localStorage.setItem('wellsim_token', data.token);
       localStorage.setItem('wellsim_user', JSON.stringify(data.user));
 
-      // Redirect to dashboard
-      window.location.href = '/';
+      // Redirect by role: patients go to their portal
+      window.location.href = data.user.role === 'patient' ? '/portal' : '/';
     } catch (err) {
       setError(t('login.netError'));
       setIsLoading(false);
