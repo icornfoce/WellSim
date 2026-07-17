@@ -87,11 +87,12 @@ export default function LoginPage() {
   const fillCredentials = (role) => {
     if (role === 'nurse') {
       setEmail('nurse@wellsim.com');
-      setPassword('password123');
+    } else if (role === 'patient') {
+      setEmail('patient@wellsim.com');
     } else {
       setEmail('doctor@wellsim.com');
-      setPassword('password123');
     }
+    setPassword('password123');
     setError('');
   };
 
@@ -195,12 +196,15 @@ export default function LoginPage() {
           {/* Demo access */}
           <div className="mt-6 pt-5 border-t border-hairline dark:border-coal-700">
             <p className="microlabel mb-2.5">{t('login.demo')}</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button onClick={() => fillCredentials('nurse')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
                 {t('login.nurse')}
               </button>
               <button onClick={() => fillCredentials('doctor')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
                 {t('login.doctor')}
+              </button>
+              <button onClick={() => fillCredentials('patient')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
+                {t('login.patientDemo')}
               </button>
             </div>
             <p className="text-xs text-muted dark:text-chalk-muted mt-4 text-center">

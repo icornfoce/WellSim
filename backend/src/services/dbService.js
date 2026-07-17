@@ -46,7 +46,10 @@ function readDB() {
       return defaultDB;
     }
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
-    return JSON.parse(raw);
+    const db = JSON.parse(raw);
+    ensurePatientDemo(db);
+    ensureNoFakeVitals(db);
+    return db;
   } catch (error) {
     console.error('❌ DB read error:', error.message);
     const defaultDB = createDefaultDB();
@@ -71,6 +74,71 @@ function writeDB(data) {
   }
 }
 
+/**
+ * Migration: make sure the demo patient account exists in databases
+ * created before the patient-portal feature. Runs once per db.json.
+ */
+function ensurePatientDemo(db) {
+  if (!db || !Array.isArray(db.users)) return;
+  if (db.users.some(u => u.email === 'patient@wellsim.com')) return;
+
+  const maxNum = db.users.reduce((max, u) => {
+    const m = /^u(\d+)$/.exec(u.id || '');
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const demoUser = {
+    id: `u${maxNum + 1}`,
+    name: 'Somchai Jaidee',
+    email: 'patient@wellsim.com',
+    password: hashPassword('password123'),
+    role: 'patient',
+    station: 'OPD',
+  };
+  db.users.push(demoUser);
+
+  // Link the seeded demo record p1 if it isn't owned by anyone yet
+  const p1 = (db.patients || []).find(p => p.id === 'p1');
+  if (p1 && !p1.userId) p1.userId = demoUser.id;
+
+  writeDB(db);
+  console.log('🔧 Migrated DB: added demo patient account (patient@wellsim.com)');
+}
+
+/**
+ * Migration: older versions silently filled unentered vitals with a
+ * fixed "healthy defaults" set. If a record still carries EXACTLY that
+ * signature (all six values untouched), treat it as never measured.
+ */
+function ensureNoFakeVitals(db) {
+  if (!db || !Array.isArray(db.patients)) return;
+  const isFake = (v) =>
+    v &&
+    v.spo2 === 98 && v.heartRate === 75 &&
+    v.systolicBP === 120 && v.diastolicBP === 80 &&
+    v.wbc === 7000 && v.hemoglobin === 13.5;
+
+  let changed = false;
+  for (const p of db.patients) {
+    if (isFake(p.vitals)) {
+      p.vitals = null;
+      p.riskScore = 0;
+      p.riskStatus = 'pending';
+      if (
+        Array.isArray(p.findings) &&
+        p.findings.length === 1 &&
+        /New patient record created/.test(p.findings[0])
+      ) {
+        p.findings = [];
+      }
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeDB(db);
+    console.log('🔧 Migrated DB: cleared placeholder vitals on unmeasured records');
+  }
+}
+
 // ─── Default Database Schema ─────────────────────────────────────────
 
 function createDefaultDB() {
@@ -92,10 +160,19 @@ function createDefaultDB() {
         role: 'doctor',
         station: 'General Clinic',
       },
+      {
+        id: 'u3',
+        name: 'Somchai Jaidee',
+        email: 'patient@wellsim.com',
+        password: hashPassword('password123'),
+        role: 'patient',
+        station: 'OPD',
+      },
     ],
     patients: [
       {
         id: 'p1',
+        userId: 'u3',
         name: 'Somchai Jaidee',
         age: 62,
         gender: 'Male',
@@ -334,15 +411,14 @@ function getPatientById(id) {
 function createPatient(data = {}) {
   const db = readDB();
 
-  const vitals = {
-    hemoglobin: 13.5,
-    wbc: 7000,
-    systolicBP: 120,
-    diastolicBP: 80,
-    spo2: 98,
-    heartRate: 75,
-    ...(data.vitals || {}),
-  };
+  // Only keep the vitals that were actually entered — everything else
+  // stays null so the UI can honestly show "—" until it's measured.
+  const provided = data.vitals || {};
+  const vitals = {};
+  ['spo2', 'heartRate', 'systolicBP', 'diastolicBP', 'wbc', 'hemoglobin'].forEach((k) => {
+    vitals[k] = provided[k] ?? null;
+  });
+  const hasAnyVitals = Object.values(vitals).some((x) => x !== null && x !== undefined);
 
   const patient = {
     id: nextPatientId(db.patients),
@@ -354,12 +430,12 @@ function createPatient(data = {}) {
     checkInTime:
       data.checkInTime ||
       new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    vitals,
+    vitals: hasAnyVitals ? vitals : null,
     findings:
       Array.isArray(data.findings) && data.findings.length
         ? data.findings
-        : ['New patient record created. Awaiting IoT diagnostic screening.'],
-    ...calculateRisk(vitals),
+        : [],
+    ...(hasAnyVitals ? calculateRisk(vitals) : { riskScore: 0, riskStatus: 'pending' }),
   };
 
   db.patients.push(patient);
