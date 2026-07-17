@@ -2,25 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Google Fonts Import ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* ─── Type: IBM Plex family — technical, clinical, human ──────────── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
-/* ─── Base Styles ─────────────────────────────────────────────────── */
+/* ─── Base ────────────────────────────────────────────────────────── */
 @layer base {
   html {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-slate-50 text-slate-800;
+    @apply bg-paper text-ink transition-colors duration-300;
+    position: relative;
   }
 
-  /* Custom scrollbar for WebKit browsers */
+  .dark body {
+    @apply bg-coal-950 text-chalk;
+  }
+
+  /* Film grain — barely there, kills the "flat AI render" feel */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3000;
+    opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    @apply bg-med-600 text-white;
+  }
+
+  .dark ::selection {
+    @apply bg-med-300 text-coal-950;
+  }
+
+  :focus-visible {
+    outline: 1px solid #129077;
+    outline-offset: 2px;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
 
   ::-webkit-scrollbar-track {
@@ -28,107 +61,113 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full;
+    @apply bg-hairline-strong rounded-sm;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-400;
+    @apply bg-muted;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-coal-600;
   }
 }
 
-/* ─── Component Layer ─────────────────────────────────────────────── */
+/* ─── Components ──────────────────────────────────────────────────── */
 @layer components {
-  /* Dashboard card base style */
+  /* Flat card: structure from hairlines, not shadows */
   .card {
-    @apply bg-white rounded-2xl border border-slate-100 shadow-card
-           transition-all duration-300 ease-out
-           hover:shadow-card-hover hover:border-slate-200
-           hover:-translate-y-0.5;
+    @apply bg-surface border border-hairline rounded-md
+           transition-colors duration-300
+           dark:bg-coal-900 dark:border-coal-700;
   }
 
-  /* Glassmorphism card variant */
-  .card-glass {
-    @apply bg-white/70 backdrop-blur-xl rounded-2xl border border-white/60
-           shadow-card transition-all duration-300 ease-out
-           hover:shadow-card-hover hover:bg-white/80;
+  /* Micro label — the system's typographic signature */
+  .microlabel {
+    @apply font-mono text-micro uppercase text-muted dark:text-chalk-muted;
   }
 
-  /* Status badge */
-  .badge {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-           text-xs font-semibold tracking-wide uppercase;
+  /* Primary action: ink block (inverts in dark) */
+  .btn-ink {
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2
+           text-xs font-semibold rounded
+           bg-ink text-white hover:bg-ink/85
+           dark:bg-chalk dark:text-coal-950 dark:hover:bg-white
+           transition-colors duration-200 active:translate-y-px
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  .badge-online {
-    @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200;
+  /* Secondary action: hairline outline */
+  .btn-line {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-2
+           text-xs font-medium rounded
+           border border-hairline-strong text-ink hover:border-ink/50 hover:bg-paper
+           dark:border-coal-600 dark:text-chalk dark:hover:border-chalk/50 dark:hover:bg-coal-800
+           transition-colors duration-200 active:translate-y-px;
   }
 
-  .badge-offline {
-    @apply badge bg-red-50 text-red-600 border border-red-200;
-  }
-
-  .badge-recording {
-    @apply badge bg-blue-50 text-blue-700 border border-blue-200;
+  /* Inputs */
+  .field {
+    @apply w-full px-3 py-2 text-sm rounded
+           bg-surface border border-hairline-strong text-ink placeholder:text-muted/60
+           focus:outline-none focus:border-med-600 focus:ring-1 focus:ring-med-600
+           dark:bg-coal-850 dark:border-coal-600 dark:text-chalk dark:placeholder:text-chalk-muted/60
+           dark:focus:border-med-300 dark:focus:ring-med-300
+           transition-colors duration-200;
   }
 }
 
-/* ─── Utility Layer ───────────────────────────────────────────────── */
+/* ─── Utilities ───────────────────────────────────────────────────── */
 @layer utilities {
-  /* Staggered animation delays for card entrance */
   .animate-delay-100 { animation-delay: 100ms; }
   .animate-delay-200 { animation-delay: 200ms; }
   .animate-delay-300 { animation-delay: 300ms; }
   .animate-delay-400 { animation-delay: 400ms; }
   .animate-delay-500 { animation-delay: 500ms; }
-  .animate-delay-600 { animation-delay: 600ms; }
-  .animate-delay-700 { animation-delay: 700ms; }
-}
 
-/* ─── Custom Animations ──────────────────────────────────────────── */
-
-/* Pulse ring animation for online status */
-@keyframes ping-ring {
-  0% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  75%, 100% {
-    transform: scale(2.5);
+  .will-fade-up {
     opacity: 0;
+    animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 }
 
-.animate-ping-ring {
-  animation: ping-ring 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+/* ─── Motion (functional only) ────────────────────────────────────── */
+
+/* Equalizer bars in the audio player */
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.4); }
+  50%      { transform: scaleY(1); }
 }
 
-/* Data flash animation when new data arrives */
-@keyframes data-flash {
-  0% { background-color: rgba(51, 111, 255, 0.08); }
-  100% { background-color: transparent; }
+.eq-bar {
+  transform-origin: center;
+  animation: eq-bounce 0.8s ease-in-out infinite;
 }
 
-.animate-data-flash {
-  animation: data-flash 1s ease-out;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* Breathing glow for active recording */
-@keyframes breathe {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.1); }
-}
+/* ─── Print: always light, chrome hidden ──────────────────────────── */
+@media print {
+  html {
+    color-scheme: light;
+  }
 
-.animate-breathe {
-  animation: breathe 2s ease-in-out infinite;
-}
+  body {
+    background: #ffffff !important;
+    color: #15181B !important;
+  }
 
-/* WiFi wave animation */
-@keyframes wifi-wave {
-  0% { opacity: 0.3; }
-  50% { opacity: 1; }
-  100% { opacity: 0.3; }
-}
+  body::after {
+    display: none;
+  }
 
-.animate-wifi-1 { animation: wifi-wave 1.5s ease-in-out infinite; }
-.animate-wifi-2 { animation: wifi-wave 1.5s ease-in-out 0.3s infinite; }
-.animate-wifi-3 { animation: wifi-wave 1.5s ease-in-out 0.6s infinite; }
+  .print-hidden {
+    display: none !important;
+  }
+}

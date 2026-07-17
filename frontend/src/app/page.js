@@ -1,42 +1,34 @@
 /**
- * WellSim — Clinical Triage & AI Analysis Dashboard
- * 
- * A professional, highly scannable medical web application for triage nurses
- * and clinic doctors. Integrates real-time patient queue, lab data fusion,
- * bio-acoustics playback, and AI recommendation engines.
+ * WellSim — Clinical Triage & AI Analysis Dashboard (UI v3 "Instrument")
+ *
+ * A professional, highly scannable medical web application for triage
+ * nurses and clinic doctors. Real-time patient queue, lab data fusion,
+ * bio-acoustics playback, and AI recommendation engine.
+ *
+ * Design language: paper & ink, hairline rules, IBM Plex, one clinical
+ * green accent. Numbers are mono and tabular. Decoration only where it
+ * carries information.
  */
 
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Activity, 
-  User, 
-  Wifi, 
-  Clock, 
-  AlertTriangle, 
-  CheckCircle, 
-  HelpCircle, 
-  ChevronRight, 
-  FileText, 
-  Volume2, 
-  Play, 
-  Pause, 
-  Printer, 
+import {
+  Play,
+  Pause,
+  Printer,
   RefreshCw,
   Search,
-  Filter,
   Check,
-  TrendingDown,
-  Info,
   LogOut,
   Plus,
   Pencil,
-  Trash2
+  Trash2,
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
 import PatientFormModal from '../components/PatientFormModal';
+import ThemeToggle from '../components/ThemeToggle';
 import {
   fetchPatients,
   updatePatientVitals as apiUpdateVitals,
@@ -57,6 +49,62 @@ export default function Page() {
     <RouteGuard>
       <Dashboard />
     </RouteGuard>
+  );
+}
+
+/* ─── The WellSim mark: a hand-drawn pulse in a solid block ────────── */
+function PulseMark({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <path
+        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/* ─── Numbered section header with a trailing hairline rule ────────── */
+function SectionHead({ index, title, children }) {
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      <span className="font-mono text-[10px] text-med-600 dark:text-med-300 shrink-0">{index}</span>
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk whitespace-nowrap">
+        {title}
+      </h2>
+      <span className="flex-1 h-px bg-hairline dark:bg-coal-700 min-w-[12px]" />
+      {children}
+    </div>
+  );
+}
+
+/* ─── Instrument tick: where a reading sits against its ref band ───── */
+function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
+  const clamp = (v, a, b) => Math.min(Math.max(Number(v) || 0, a), b);
+  const pct = ((clamp(value, min, max) - min) / (max - min)) * 100;
+  const okStart = ((okMin - min) / (max - min)) * 100;
+  const okWidth = ((okMax - okMin) / (max - min)) * 100;
+  const tickCls =
+    tone === 'bad'
+      ? 'bg-risk-high dark:bg-risk-highd'
+      : tone === 'warn'
+        ? 'bg-risk-mod dark:bg-risk-modd'
+        : 'bg-med-600 dark:bg-med-300';
+  return (
+    <div className="relative h-[3px] mt-3 bg-hairline dark:bg-coal-700">
+      <div
+        className="absolute inset-y-0 bg-ink/[0.09] dark:bg-white/[0.09]"
+        style={{ left: `${okStart}%`, width: `${okWidth}%` }}
+      />
+      <div
+        className={`absolute -top-[4px] w-[2px] h-[11px] transition-all duration-700 ${tickCls}`}
+        style={{ left: `calc(${pct}% - 1px)` }}
+      />
+    </div>
   );
 }
 
@@ -166,13 +214,15 @@ function Dashboard() {
   // Show loading screen while waiting for the API to fetch patients
   if (!patientsLoaded) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
-            <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center transition-colors duration-300">
+        <div className="text-center animate-fade-in">
+          <div className="w-8 h-8 mx-auto rounded bg-ink dark:bg-chalk flex items-center justify-center">
+            <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
           </div>
-          <p className="text-sm font-semibold text-slate-500">Loading Patient Data...</p>
+          <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
+            <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
+          </div>
+          <p className="microlabel mt-4">Loading patient data</p>
         </div>
       </div>
     );
@@ -194,13 +244,37 @@ function Dashboard() {
     return 'Obese';
   };
 
-  // Status Colors helper
-  const getRiskColor = (status) => {
+  // Risk semantics → typography & color (single source of truth)
+  const getRisk = (status) => {
     switch (status) {
-      case 'high': return { bg: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', label: 'High Risk' };
-      case 'moderate': return { bg: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500', label: 'Moderate' };
-      case 'low': return { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', label: 'Low Risk' };
-      default: return { bg: 'bg-slate-50 text-slate-500 border-slate-200', dot: 'bg-slate-400', label: 'Pending' };
+      case 'high': return {
+        label: 'HIGH',
+        mark: '▲',
+        text: 'text-risk-high dark:text-risk-highd',
+        dot: 'bg-risk-high dark:bg-risk-highd',
+        stroke: 'stroke-risk-high dark:stroke-risk-highd',
+      };
+      case 'moderate': return {
+        label: 'MOD',
+        mark: '▲',
+        text: 'text-risk-mod dark:text-risk-modd',
+        dot: 'bg-risk-mod dark:bg-risk-modd',
+        stroke: 'stroke-risk-mod dark:stroke-risk-modd',
+      };
+      case 'low': return {
+        label: 'LOW',
+        mark: '',
+        text: 'text-risk-low dark:text-risk-lowd',
+        dot: 'bg-risk-low dark:bg-risk-lowd',
+        stroke: 'stroke-risk-low dark:stroke-risk-lowd',
+      };
+      default: return {
+        label: 'PENDING',
+        mark: '',
+        text: 'text-muted dark:text-chalk-muted',
+        dot: 'bg-hairline-strong dark:bg-coal-600',
+        stroke: 'stroke-hairline-strong dark:stroke-coal-600',
+      };
     }
   };
 
@@ -286,20 +360,15 @@ function Dashboard() {
   if (!patient) {
     return (
       <>
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-          <div className="text-center max-w-sm">
-            <div className="flex items-center justify-center w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-100">
-              <User className="w-6 h-6 text-blue-500" />
-            </div>
-            <h2 className="text-lg font-bold text-slate-800">No patients yet</h2>
-            <p className="text-sm text-slate-500 mt-1">
+        <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center p-4 transition-colors duration-300">
+          <div className="text-center max-w-sm animate-fade-up">
+            <p className="microlabel">Queue empty</p>
+            <h2 className="text-2xl font-light text-ink dark:text-chalk mt-2">No patients yet</h2>
+            <p className="text-sm text-muted dark:text-chalk-muted mt-2 leading-relaxed">
               The triage queue is empty. Add a patient record to get started.
             </p>
-            <button
-              onClick={openAddModal}
-              className="mt-5 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm active:scale-98"
-            >
-              <Plus className="w-4 h-4" /> Add Patient
+            <button onClick={openAddModal} className="btn-ink mt-6">
+              <Plus className="w-3.5 h-3.5" /> Add patient
             </button>
           </div>
         </div>
@@ -315,400 +384,386 @@ function Dashboard() {
     );
   }
 
+  const risk = getRisk(patient?.riskStatus);
+  const bmiValue = calculateBMI(patient.weight, patient.height);
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      
-      {/* ─── 1. TOP BAR / HEADER ─────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-slate-200/80 shadow-sm px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between h-16">
-          
-          {/* Logo & Name */}
+    <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
+
+      {/* ─── 1. TOP BAR ──────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-14 gap-4">
+
+          {/* Wordmark */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
+              <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
+            </div>
+            <div className="flex items-baseline gap-2.5">
+              <span className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</span>
+              <span className="microlabel hidden sm:inline">Triage / v2</span>
+            </div>
+          </div>
+
+          {/* Telemetry strip */}
+          <div className="hidden md:flex items-center gap-6 font-mono text-[11px] text-muted dark:text-chalk-muted">
+            <span className="flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-[1px] ${
+                deviceStatus?.status === 'online'
+                  ? 'bg-med-500 dark:bg-med-300 animate-blink'
+                  : 'bg-risk-high dark:bg-risk-highd'
+              }`} />
+              IOT {deviceStatus?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+            </span>
+            <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
+            <span className="tabular-nums text-ink dark:text-chalk">
+              {currentTime.toLocaleTimeString('en-US', { hour12: false })}
+            </span>
+          </div>
+
+          {/* User / theme */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 shadow-md">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <span className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
-                Well<span className="text-blue-600 font-extrabold">Sim</span>
-                <span className="text-[11px] font-semibold text-blue-500 px-2 py-0.5 bg-blue-50 rounded-full border border-blue-100">
-                  Triage Panel
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {/* System Status Indicators */}
-          <div className="hidden md:flex items-center gap-6 text-xs text-slate-500 font-medium">
-            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
-              <span className={`w-2.5 h-2.5 rounded-full ${deviceStatus?.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'}`} />
-              <span>IoT Device: {deviceStatus?.status === 'online' ? 'Connected' : 'Offline'}</span>
-            </div>
-            
-            <div className="flex items-center gap-1.5">
-              <Wifi className="w-4 h-4 text-slate-400" />
-              <span>RSSI: {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : 'N/A'}</span>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-slate-400" />
-              <span className="font-mono tabular-nums">
-                {currentTime.toLocaleTimeString('en-US', { hour12: false })}
-              </span>
-            </div>
-          </div>
-
-          {/* User Profile & Logout */}
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
-            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center">
-              <User className="w-4 h-4 text-blue-600" />
-            </div>
-            <div className="text-left hidden sm:block">
-              <p className="text-xs font-bold text-slate-800">{user?.name || 'Staff'}</p>
-              <p className="text-[10px] text-slate-400 capitalize">{user?.role || 'Unknown'} — {user?.station || 'General Clinic'}</p>
+            <ThemeToggle />
+            <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
+            <div className="text-right hidden sm:block leading-tight">
+              <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
+              <p className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
+                {user?.role || 'Unknown'} · {user?.station || 'General'}
+              </p>
             </div>
             <button
               onClick={onLogout}
-              className="ml-2 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
               title="Sign out"
+              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                         text-muted hover:text-risk-high hover:border-risk-high/50
+                         dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
+                         transition-colors duration-200"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* ─── MAIN CONTENT CONTAINER ──────────────────────────────────────── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ─── MAIN ────────────────────────────────────────────────────── */}
+      <main className="relative flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Registration marks — a quiet nod to print production */}
+        <span className="hidden lg:block absolute top-1 right-2 font-mono text-[11px] text-hairline-strong dark:text-coal-600 select-none print-hidden" aria-hidden="true">+</span>
+        <span className="hidden lg:block absolute bottom-1 left-2 font-mono text-[11px] text-hairline-strong dark:text-coal-600 select-none print-hidden" aria-hidden="true">+</span>
 
-        {/* ─── 2. PATIENT QUEUE & TRIAGE LIST (1/3 Width) ─────────────────── */}
-        <section className="lg:col-span-1 flex flex-col gap-4">
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-12rem)] min-h-[500px]">
-            
-            {/* Search/Header */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <span>Patient Queue</span>
-                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                    {patients.length}
-                  </span>
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={loadPatients}
-                    className="text-xs text-slate-500 font-semibold hover:text-blue-600 flex items-center gap-1 transition"
-                    title="Reload patient list"
-                  >
-                    <RefreshCw className="w-3 h-3" /> Refresh
-                  </button>
-                  <button
-                    onClick={openAddModal}
-                    className="text-xs text-white font-bold bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg flex items-center gap-1 transition active:scale-95"
-                    title="Add new patient"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add
-                  </button>
-                </div>
-              </div>
+        {/* ─── 2. PATIENT QUEUE ───────────────────────────────────────── */}
+        <section className="lg:col-span-1 will-fade-up">
+          <div className="card overflow-hidden flex flex-col h-[calc(100vh-10.5rem)] min-h-[500px]">
 
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Search patients..."
-                  className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            {/* Panel head */}
+            <div className="p-4 border-b border-hairline dark:border-coal-700">
+              <SectionHead index="01" title="Patient Queue">
+                <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">N={patients.length}</span>
+                <button
+                  onClick={loadPatients}
+                  title="Reload patient list"
+                  className="w-6 h-6 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                             text-muted hover:text-ink hover:border-ink/50 dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
+                             transition-colors duration-200 group"
+                >
+                  <RefreshCw className="w-3 h-3 transition-transform duration-500 group-hover:rotate-180" />
+                </button>
+                <button onClick={openAddModal} className="btn-ink !px-2.5 !py-1" title="Add new patient">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              </SectionHead>
+
+              {/* Search */}
+              <div className="relative mt-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted/70 dark:text-chalk-muted/70" />
+                <input
+                  type="text"
+                  placeholder="Search patients…"
+                  className="field !pl-9 !py-1.5 !text-[13px]"
                 />
               </div>
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1">
+            {/* Rows */}
+            <div className="flex-1 overflow-y-auto divide-y divide-hairline dark:divide-coal-700">
               {patients.map((item) => {
-                const colors = getRiskColor(item.riskStatus);
+                const r = getRisk(item.riskStatus);
                 const isSelected = item.id === selectedPatientId;
                 return (
                   <button
                     key={item.id}
                     onClick={() => setSelectedPatientId(item.id)}
-                    className={`w-full text-left p-3 rounded-xl transition-all duration-200 flex items-center justify-between border ${
-                      isSelected 
-                        ? 'bg-blue-50/60 border-blue-200 shadow-sm' 
-                        : 'border-transparent hover:bg-slate-50'
+                    className={`relative w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors duration-200 ${
+                      isSelected
+                        ? 'bg-med-600/[0.06] dark:bg-med-300/[0.07]'
+                        : 'hover:bg-paper dark:hover:bg-coal-850'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      {/* Color coded circle */}
-                      <div className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{item.name}</p>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                          <span>Age: {item.age}</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-0.5">
-                            <Clock className="w-3 h-3" /> {item.checkInTime}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${colors.bg}`}>
-                        {colors.label}
+                    {isSelected && (
+                      <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-med-600 dark:bg-med-300" />
+                    )}
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-[1px] shrink-0 ${r.dot} ${item.riskStatus === 'high' ? 'animate-blink' : ''}`} />
+                      <span className="min-w-0">
+                        <span className={`block text-[13px] font-semibold truncate ${
+                          isSelected ? 'text-med-700 dark:text-med-300' : 'text-ink dark:text-chalk'
+                        }`}>
+                          {item.name}
+                        </span>
+                        <span className="block font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5">
+                          AGE {item.age} · {item.checkInTime}
+                        </span>
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-300" />
-                    </div>
+                    </span>
+                    <span className={`font-mono text-[10px] shrink-0 ${r.text}`}>
+                      {r.mark && <span className="mr-1">{r.mark}</span>}{r.label}
+                    </span>
                   </button>
                 );
               })}
             </div>
-
           </div>
         </section>
 
-        {/* ─── 3. SELECTED PATIENT DETAILS & DATA FUSION PANEL (2/3 Width) ── */}
-        <section className="lg:col-span-2 flex flex-col gap-6">
+        {/* ─── 3. PATIENT RECORD ──────────────────────────────────────── */}
+        <section className="lg:col-span-2 flex flex-col gap-5">
 
-          {/* Patient Header Details */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+          {/* Identity */}
+          <div className="card p-5 will-fade-up animate-delay-100">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
-                <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">Currently Active Triage Record</span>
-                <h1 className="text-2xl font-extrabold text-slate-900 mt-0.5">{patient.name}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">Patient ID: {patient.id.toUpperCase()}</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-med-600 dark:text-med-300">
+                  Active record / {patient.id.toUpperCase()}
+                </p>
+                <h1 className="text-[28px] font-light tracking-tight text-ink dark:text-chalk mt-1 leading-tight">
+                  {patient.name}
+                </h1>
               </div>
 
-              {/* Actions + Status card */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={openEditModal}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition active:scale-95"
-                  title="Edit patient details"
-                >
-                  <Pencil className="w-3.5 h-3.5" /> Edit
+              <div className="flex items-center gap-2">
+                <button onClick={openEditModal} className="btn-line" title="Edit patient details">
+                  <Pencil className="w-3 h-3" /> Edit
                 </button>
                 <button
                   onClick={handleDeletePatient}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition active:scale-95"
                   title="Delete patient"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded
+                             border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
+                             dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
+                             transition-colors duration-200 active:translate-y-px"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                  <Trash2 className="w-3 h-3" /> Delete
                 </button>
-
-                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">AI Screening Risk</p>
-                    <p className="text-sm font-bold text-slate-700 capitalize">{patient?.riskStatus || 'Pending'} Risk</p>
-                  </div>
-                  <div className={`w-3.5 h-3.5 rounded-full ${getRiskColor(patient?.riskStatus).dot} animate-pulse`} />
+                <span className="w-px h-6 bg-hairline dark:bg-coal-700 mx-1" />
+                <div className="text-right">
+                  <p className="microlabel">AI risk</p>
+                  <p className={`font-mono text-xs mt-0.5 ${risk.text}`}>
+                    {risk.mark && <span className="mr-1">{risk.mark}</span>}{risk.label}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Demographics details */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-6 text-sm">
-              <div>
-                <p className="text-xs text-slate-400 font-medium">Age</p>
-                <p className="font-bold text-slate-800 mt-0.5">{patient.age} years</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-medium">Gender</p>
-                <p className="font-bold text-slate-800 mt-0.5">{patient.gender}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-medium">Weight</p>
-                <p className="font-bold text-slate-800 mt-0.5">{patient.weight} kg</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-medium">Height</p>
-                <p className="font-bold text-slate-800 mt-0.5">{patient.height} cm</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-medium">BMI Category</p>
-                <p className="font-bold text-slate-800 mt-0.5 flex items-center gap-1.5">
-                  <span>{calculateBMI(patient.weight, patient.height)}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-normal">
-                    {getBMICategory(calculateBMI(patient.weight, patient.height))}
-                  </span>
-                </p>
-              </div>
+            {/* Demographics — ruled table */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
+              {[
+                { label: 'Age', value: `${patient.age}`, unit: 'yrs' },
+                { label: 'Gender', value: patient.gender, unit: '' },
+                { label: 'Weight', value: `${patient.weight}`, unit: 'kg' },
+                { label: 'Height', value: `${patient.height}`, unit: 'cm' },
+                { label: 'BMI', value: bmiValue, unit: getBMICategory(bmiValue) },
+              ].map(({ label, value, unit }) => (
+                <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
+                  <p className="microlabel">{label}</p>
+                  <p className="text-[15px] font-medium text-ink dark:text-chalk mt-1 tabular-nums">
+                    {value}
+                    {unit && <span className="font-mono text-[10px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Vitals Data Fusion (Inputs and Values) */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-500" />
-                <span>Lab Results &amp; Data Fusion</span>
-              </h2>
+          {/* Vitals */}
+          <div className="card p-5 will-fade-up animate-delay-200">
+            <SectionHead index="02" title="Lab Results & Data Fusion">
               {isEditing ? (
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setIsEditing(false)}
-                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
-                  >
-                    Cancel
+                <span className="flex gap-2">
+                  <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">Cancel</button>
+                  <button onClick={saveVitals} className="btn-ink !py-1.5">
+                    <Check className="w-3 h-3" /> Save
                   </button>
-                  <button 
-                    onClick={saveVitals}
-                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1"
-                  >
-                    <Check className="w-3.5 h-3.5" /> Save Changes
-                  </button>
-                </div>
+                </span>
               ) : (
-                <button 
-                  onClick={() => setIsEditing(true)}
-                  className="px-3 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
-                >
-                  Edit Vitals
-                </button>
+                <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">Edit vitals</button>
               )}
-            </div>
+            </SectionHead>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              
-              {/* SpO2 Saturation */}
-              <div className={`p-4 rounded-xl border transition ${
-                (patient?.vitals?.spo2 || 0) < 95 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">SpO2 (Oxygen)</p>
-                  {(patient?.vitals?.spo2 || 0) < 95 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-4">
+
+              {/* SpO2 */}
+              <div className="bg-surface dark:bg-coal-900 p-4">
+                <div className="flex justify-between items-baseline">
+                  <p className="microlabel">SpO2 · Oxygen</p>
+                  {(patient?.vitals?.spo2 || 0) < 95 && (
+                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▼ LOW</span>
+                  )}
                 </div>
                 {isEditing ? (
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={editedVitals.spo2 || ''}
                     onChange={(e) => setEditedVitals(prev => ({ ...prev, spo2: parseInt(e.target.value) || 0 }))}
-                    className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
+                    className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.spo2 || 0) < 95 ? 'text-red-700' : 'text-slate-800'}`}>
-                    {patient?.vitals?.spo2 || 0}%
+                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                    (patient?.vitals?.spo2 || 0) < 95 ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
+                  }`}>
+                    {patient?.vitals?.spo2 || 0}
+                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1">%</span>
                   </p>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Normal: 95% - 100%</p>
+                <TickBar value={patient?.vitals?.spo2} min={85} max={100} okMin={95} okMax={100}
+                  tone={(patient?.vitals?.spo2 || 0) < 95 ? 'bad' : 'ok'} />
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 95–100</p>
               </div>
 
-              {/* Heart Rate */}
-              <div className={`p-4 rounded-xl border transition ${
-                (patient?.vitals?.heartRate || 0) > 100 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">Heart Rate</p>
-                  {(patient?.vitals?.heartRate || 0) > 100 && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+              {/* Heart rate */}
+              <div className="bg-surface dark:bg-coal-900 p-4">
+                <div className="flex justify-between items-baseline">
+                  <p className="microlabel">Heart rate</p>
+                  {(patient?.vitals?.heartRate || 0) > 100 && (
+                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▲ HIGH</span>
+                  )}
                 </div>
                 {isEditing ? (
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={editedVitals.heartRate || ''}
                     onChange={(e) => setEditedVitals(prev => ({ ...prev, heartRate: parseInt(e.target.value) || 0 }))}
-                    className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
+                    className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.heartRate || 0) > 100 ? 'text-red-700' : 'text-slate-800'}`}>
-                    {patient?.vitals?.heartRate || 0} <span className="text-xs font-normal text-slate-400">bpm</span>
+                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                    (patient?.vitals?.heartRate || 0) > 100 ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
+                  }`}>
+                    {patient?.vitals?.heartRate || 0}
+                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">bpm</span>
                   </p>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Normal: 60 - 100 bpm</p>
+                <TickBar value={patient?.vitals?.heartRate} min={40} max={140} okMin={60} okMax={100}
+                  tone={(patient?.vitals?.heartRate || 0) > 100 ? 'bad' : 'ok'} />
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 60–100</p>
               </div>
 
-              {/* Blood Pressure */}
-              <div className={`p-4 rounded-xl border transition ${
-                (patient?.vitals?.systolicBP || 0) > 140 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">Blood Pressure</p>
-                  {(patient?.vitals?.systolicBP || 0) > 140 && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
+              {/* Blood pressure */}
+              <div className="bg-surface dark:bg-coal-900 p-4">
+                <div className="flex justify-between items-baseline">
+                  <p className="microlabel">Blood pressure</p>
+                  {(patient?.vitals?.systolicBP || 0) > 140 && (
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ HIGH</span>
+                  )}
                 </div>
                 {isEditing ? (
-                  <div className="flex items-center gap-1 mt-1.5">
-                    <input 
-                      type="number" 
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <input
+                      type="number"
                       value={editedVitals.systolicBP || ''}
                       onChange={(e) => setEditedVitals(prev => ({ ...prev, systolicBP: parseInt(e.target.value) || 0 }))}
-                      className="w-1/2 p-1 bg-white border border-slate-200 rounded text-lg font-bold focus:outline-none"
+                      className="field !text-lg !font-light tabular-nums"
                     />
-                    <span>/</span>
-                    <input 
-                      type="number" 
+                    <span className="text-muted">/</span>
+                    <input
+                      type="number"
                       value={editedVitals.diastolicBP || ''}
                       onChange={(e) => setEditedVitals(prev => ({ ...prev, diastolicBP: parseInt(e.target.value) || 0 }))}
-                      className="w-1/2 p-1 bg-white border border-slate-200 rounded text-lg font-bold focus:outline-none"
+                      className="field !text-lg !font-light tabular-nums"
                     />
                   </div>
                 ) : (
-                  <p className={`text-2xl font-extrabold mt-1.5 ${(patient?.vitals?.systolicBP || 0) > 140 ? 'text-amber-700' : 'text-slate-800'}`}>
-                    {patient?.vitals?.systolicBP || 120}/{patient?.vitals?.diastolicBP || 80} <span className="text-xs font-normal text-slate-400">mmHg</span>
+                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                    (patient?.vitals?.systolicBP || 0) > 140 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                  }`}>
+                    {patient?.vitals?.systolicBP || 120}/{patient?.vitals?.diastolicBP || 80}
+                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">mmHg</span>
                   </p>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Normal: &lt; 120/80 mmHg</p>
+                <TickBar value={patient?.vitals?.systolicBP} min={80} max={180} okMin={90} okMax={120}
+                  tone={(patient?.vitals?.systolicBP || 0) > 140 ? 'warn' : 'ok'} />
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF &lt;120/80</p>
               </div>
 
-              {/* WBC Count */}
-              <div className={`p-4 rounded-xl border transition ${
-                (patient?.vitals?.wbc || 0) > 11000 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
-              }`}>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">WBC Count</p>
+              {/* WBC */}
+              <div className="bg-surface dark:bg-coal-900 p-4">
+                <div className="flex justify-between items-baseline">
+                  <p className="microlabel">WBC count</p>
+                  {(patient?.vitals?.wbc || 0) > 11000 && (
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ HIGH</span>
+                  )}
+                </div>
                 {isEditing ? (
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={editedVitals.wbc || ''}
                     onChange={(e) => setEditedVitals(prev => ({ ...prev, wbc: parseInt(e.target.value) || 0 }))}
-                    className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
+                    className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
-                  <p className="text-2xl font-extrabold mt-1.5 text-slate-800">
-                    {(patient?.vitals?.wbc || 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">/mcL</span>
+                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                    (patient?.vitals?.wbc || 0) > 11000 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                  }`}>
+                    {(patient?.vitals?.wbc || 0).toLocaleString()}
+                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">/mcL</span>
                   </p>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Normal: 4,500 - 11,000</p>
+                <TickBar value={patient?.vitals?.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
+                  tone={(patient?.vitals?.wbc || 0) > 11000 ? 'warn' : 'ok'} />
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 4,500–11,000</p>
               </div>
 
               {/* Hemoglobin */}
-              <div className={`p-4 rounded-xl border transition ${
-                (patient?.vitals?.hemoglobin || 0) < 12 ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'
-              }`}>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Hemoglobin</p>
+              <div className="bg-surface dark:bg-coal-900 p-4">
+                <div className="flex justify-between items-baseline">
+                  <p className="microlabel">Hemoglobin</p>
+                  {(patient?.vitals?.hemoglobin || 0) < 12 && (
+                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▼ LOW</span>
+                  )}
+                </div>
                 {isEditing ? (
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.1"
                     value={editedVitals.hemoglobin || ''}
                     onChange={(e) => setEditedVitals(prev => ({ ...prev, hemoglobin: parseFloat(e.target.value) || 0 }))}
-                    className="w-full mt-1.5 p-1 bg-white border border-slate-200 rounded text-xl font-bold focus:outline-none"
+                    className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
-                  <p className="text-2xl font-extrabold mt-1.5 text-slate-800">
-                    {patient?.vitals?.hemoglobin || 0} <span className="text-xs font-normal text-slate-400">g/dL</span>
+                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                    (patient?.vitals?.hemoglobin || 0) < 12 ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
+                  }`}>
+                    {patient?.vitals?.hemoglobin || 0}
+                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">g/dL</span>
                   </p>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">Normal: 12.0 - 17.5 g/dL</p>
+                <TickBar value={patient?.vitals?.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
+                  tone={(patient?.vitals?.hemoglobin || 0) < 12 ? 'warn' : 'ok'} />
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">REF 12.0–17.5</p>
               </div>
 
-              {/* Empty slot / placeholder for extension */}
-              <div className="p-4 rounded-xl border border-dashed border-slate-200 flex flex-col justify-center items-center text-center">
-                <Info className="w-4 h-4 text-slate-300 mb-1" />
-                <p className="text-[10px] text-slate-400 uppercase font-medium">Future Data Fusion</p>
-                <p className="text-[9px] text-slate-300">ECG / Spirometer</p>
+              {/* Reserved slot */}
+              <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
+                <p className="microlabel">Reserved</p>
+                <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">ECG / SPIROMETER</p>
               </div>
 
             </div>
           </div>
 
-          {/* IoT Bio-Acoustics Card */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-            
-            {/* Header Tabs */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 p-4 bg-slate-50/40 gap-3">
-              <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-blue-500" />
-                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">IoT Bio-Acoustics</h2>
-              </div>
-
-              <div className="flex p-0.5 bg-slate-100 rounded-lg self-start sm:self-auto">
+          {/* Bio-acoustics */}
+          <div className="card p-5 will-fade-up animate-delay-300">
+            <SectionHead index="03" title="Bio-Acoustics">
+              <div className="flex gap-4">
                 {['lung', 'heart', 'cough'].map((tab) => (
                   <button
                     key={tab}
@@ -717,163 +772,160 @@ function Dashboard() {
                       setIsPlaying(false);
                       setPlayProgress(0);
                     }}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition capitalize ${
-                      activeAudioTab === tab 
-                        ? 'bg-white text-slate-800 shadow-sm' 
-                        : 'text-slate-500 hover:text-slate-800'
+                    className={`text-xs capitalize pb-0.5 border-b transition-colors duration-200 ${
+                      activeAudioTab === tab
+                        ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
+                        : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
                     }`}
                   >
-                    {tab} sound
+                    {tab}
                   </button>
                 ))}
               </div>
-            </div>
+            </SectionHead>
 
-            {/* Audio detail area */}
-            <div className="p-6">
+            <div className="mt-4">
               {patient?.audioLogs?.[activeAudioTab]?.available ? (
-                <div className="space-y-4">
-                  
-                  {/* Status metadata */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      {patient?.audioLogs?.[activeAudioTab]?.status || 'Status unavailable'}
-                    </span>
-                    <span className="font-mono text-slate-400">Duration: {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
+                <div>
+                  <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
+                    <span className="truncate pr-4">SRC · {patient?.audioLogs?.[activeAudioTab]?.status || 'Status unavailable'}</span>
+                    <span className="shrink-0">DUR {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
-                  {/* Visual Wave Player */}
-                  <div className="bg-slate-900 rounded-xl p-5 flex items-center gap-4">
+                  {/* Player — an ink panel in both themes */}
+                  <div className="mt-3 bg-ink dark:bg-coal-850 dark:border dark:border-coal-700 rounded-md p-4 flex items-center gap-4">
                     <button
                       onClick={() => setIsPlaying(!isPlaying)}
-                      className="w-11 h-11 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center flex-shrink-0 transition active:scale-95"
+                      className="w-10 h-10 rounded bg-med-500 hover:bg-med-400 text-white flex items-center justify-center
+                                 flex-shrink-0 transition-colors duration-200 active:translate-y-px"
                     >
-                      {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white ml-0.5" />}
+                      {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
                     </button>
 
-                    {/* Fake Spectrogram/Waveform Visualizer */}
-                    <div className="flex-1 h-12 flex items-center gap-[3px] relative overflow-hidden">
-                      {/* Playhead progress overlay */}
-                      <div 
-                        className="absolute top-0 bottom-0 left-0 bg-blue-500/10 border-r-2 border-blue-500 transition-all duration-300"
+                    <div className="relative flex-1 h-10 flex items-center gap-[3px] overflow-hidden">
+                      <div
+                        className="absolute top-0 bottom-0 left-0 border-r border-white/50 transition-all duration-300 z-10"
                         style={{ width: `${playProgress}%` }}
                       />
-
-                      {/* Random wave bars */}
                       {[...Array(38)].map((_, i) => {
                         const active = (i / 38) * 100 <= playProgress;
                         return (
                           <div
                             key={i}
-                            className={`flex-1 rounded-full transition-all duration-300 ${
-                              active ? 'bg-blue-500 h-8' : 'bg-slate-700 h-4'
+                            className={`flex-1 rounded-[1px] transition-colors duration-300 ${
+                              active ? `bg-med-400 ${isPlaying ? 'eq-bar' : ''}` : 'bg-white/15'
                             }`}
                             style={{
-                              height: `${Math.sin(i * 0.4) * 16 + 24}px`
+                              height: `${Math.sin(i * 0.4) * 14 + 20}px`,
+                              animationDelay: `${(i % 6) * 0.11}s`,
                             }}
                           />
                         );
                       })}
                     </div>
+
+                    <span className="font-mono text-[10px] text-white/40 tabular-nums w-9 text-right shrink-0">
+                      {playProgress}%
+                    </span>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                  <AlertTriangle className="w-8 h-8 text-slate-300 mb-2" />
-                  <p className="text-xs font-bold text-slate-500">Audio Log Not Found</p>
-                  <p className="text-[10px] text-slate-400 mt-1">This specific diagnostic audio was not recorded by WellSim IoT device.</p>
+                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-8 text-center">
+                  <p className="microlabel">No recording</p>
+                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5">
+                    THIS DIAGNOSTIC AUDIO WAS NOT CAPTURED
+                  </p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* ─── 4. WELLSIM AI ANALYSIS & RECOMMENDATION ENGINE ───────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            
-            {/* Title */}
-            <div className="flex items-center gap-2 mb-6">
-              <Activity className="w-4 h-4 text-blue-500" />
-              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">AI Analysis &amp; Decision Engine</h2>
-            </div>
+          {/* AI analysis */}
+          <div className="card p-5 will-fade-up animate-delay-400">
+            <SectionHead index="04" title="AI Analysis & Decision" />
 
-            {/* Score and Findings Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-              
-              {/* Score Gauge representation */}
-              <div className="md:col-span-1 flex flex-col items-center text-center p-4 border-r border-slate-100">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Risk Probability</span>
-                
-                {/* Circular Score display */}
-                <div className="relative w-32 h-32 flex items-center justify-center mt-3">
-                  {/* Gauge Background ring */}
-                  <svg className="absolute w-full h-full transform -rotate-90">
-                    <circle cx="64" cy="64" r="50" strokeWidth="8" stroke="#E2E8F0" fill="transparent" />
-                    <circle 
-                      cx="64" 
-                      cy="64" 
-                      r="50" 
-                      strokeWidth="10" 
-                      stroke={patient?.riskStatus === 'high' ? '#EF4444' : patient?.riskStatus === 'moderate' ? '#F59E0B' : '#10B981'} 
-                      strokeDasharray={2 * Math.PI * 50}
-                      strokeDashoffset={2 * Math.PI * 50 * (1 - (patient?.riskScore || 0) / 100)}
-                      strokeLinecap="round"
-                      fill="transparent" 
-                    />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center mt-5">
+
+              {/* Instrument dial */}
+              <div className="flex flex-col items-center md:border-r border-hairline dark:border-coal-700 py-2">
+                <div className="relative w-36 h-36">
+                  <svg viewBox="0 0 144 144" className="w-full h-full">
+                    {/* Tick ring */}
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <line
+                        key={i}
+                        x1="72" y1="4" x2="72" y2={i % 6 === 0 ? '10' : '7'}
+                        transform={`rotate(${i * 15} 72 72)`}
+                        className="stroke-hairline-strong dark:stroke-coal-600"
+                        strokeWidth="1"
+                      />
+                    ))}
+                    <g transform="rotate(-90 72 72)">
+                      <circle cx="72" cy="72" r="54" strokeWidth="4"
+                        className="stroke-hairline dark:stroke-coal-700" fill="transparent" />
+                      <circle
+                        cx="72" cy="72" r="54" strokeWidth="4"
+                        strokeDasharray={2 * Math.PI * 54}
+                        strokeDashoffset={2 * Math.PI * 54 * (1 - (patient?.riskScore || 0) / 100)}
+                        className={`${risk.stroke} transition-all duration-1000 ease-out`}
+                        fill="transparent"
+                      />
+                    </g>
                   </svg>
-                  <span className="text-3xl font-extrabold text-slate-800">{patient?.riskScore || 0}%</span>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-light tabular-nums text-ink dark:text-chalk leading-none">
+                      {patient?.riskScore || 0}
+                      <span className="font-mono text-sm text-muted dark:text-chalk-muted ml-0.5">%</span>
+                    </span>
+                    <span className="microlabel mt-1.5">Probability</span>
+                  </div>
                 </div>
-
-                <span className={`mt-3 text-xs font-bold px-3 py-1 rounded-full uppercase border ${
-                  getRiskColor(patient?.riskStatus).bg
-                }`}>
-                  {getRiskColor(patient?.riskStatus).label}
-                </span>
+                <p className={`font-mono text-[11px] mt-3 ${risk.text}`}>
+                  {risk.mark && <span className="mr-1">{risk.mark}</span>}{risk.label} RISK
+                </p>
               </div>
 
-              {/* Key Findings Bullet points */}
-              <div className="md:col-span-2 space-y-3">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                  <TrendingDown className="w-3.5 h-3.5" /> AI Diagnostic Biomarkers
-                </h3>
-                <ul className="space-y-2 text-xs text-slate-600">
+              {/* Findings */}
+              <div className="md:col-span-2">
+                <p className="microlabel">Diagnostic biomarkers</p>
+                <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
                   {(patient?.findings || []).map((finding, idx) => (
-                    <li key={idx} className="flex items-start gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
-                      <span>{finding}</span>
+                    <li key={idx} className="flex items-start gap-3 py-2.5">
+                      <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{finding}</span>
                     </li>
                   ))}
                 </ul>
               </div>
-
             </div>
 
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-100">
-              <button 
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-2 mt-5 pt-5 border-t border-hairline dark:border-coal-700 print-hidden">
+              <button
                 onClick={() => alert(`Triage for ${patient.name} approved. Sent to duty doctor.`)}
-                className="px-4 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm active:scale-98"
+                className="btn-ink flex-1"
               >
-                Approve Triage &amp; Send
+                Approve triage &amp; send
               </button>
-              <button 
+              <button
                 onClick={() => alert(`Triggering re-recording on WellSim IoT device...`)}
-                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition active:scale-98"
+                className="btn-line flex-1"
               >
-                Re-take IoT Recording
+                Re-take recording
               </button>
-              <button 
-                onClick={() => window.print()}
-                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-xl transition flex items-center justify-center gap-1.5 active:scale-98"
-              >
-                <Printer className="w-4 h-4" /> Print Summary
+              <button onClick={() => window.print()} className="btn-line flex-1">
+                <Printer className="w-3.5 h-3.5" /> Print summary
               </button>
             </div>
-
           </div>
 
+          {/* Colophon */}
+          <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
+            WellSim · Clinical triage system · Prototype
+          </p>
         </section>
-
       </main>
 
       {/* Add / Edit Patient Modal */}
@@ -885,7 +937,6 @@ function Dashboard() {
         onSubmit={handleModalSubmit}
         submitting={modalSubmitting}
       />
-
     </div>
   );
 }

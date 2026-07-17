@@ -1,62 +1,95 @@
 /** @type {import('tailwindcss').Config} */
+/**
+ * WellSim Design System v3 — "Instrument"
+ * Editorial-clinical: paper & ink, hairline rules, a single medical
+ * green accent, IBM Plex type. No gradients, no glow, no decoration
+ * that doesn't carry information.
+ */
 module.exports = {
+  darkMode: 'class',
   content: [
     './src/**/*.{js,jsx,ts,tsx,mdx}',
   ],
   theme: {
     extend: {
       colors: {
-        // Medical-grade blue palette
-        medical: {
-          50:  '#EEF5FF',
-          100: '#D9E8FF',
-          200: '#BCD5FF',
-          300: '#8EBBFF',
-          400: '#5996FF',
-          500: '#336FFF',
-          600: '#1A4FF5',
-          700: '#133CE1',
-          800: '#1633B6',
-          900: '#18308F',
-          950: '#141F57',
+        // Light surfaces
+        paper:   '#F6F6F4', // page background — warm grey, not blue
+        surface: '#FFFFFF', // cards
+        ink:     '#15181B', // primary text / primary buttons
+        muted:   '#6A716E', // secondary text
+        hairline: {
+          DEFAULT: '#E4E6E2',
+          strong:  '#C9CDC8',
         },
-        // Accent colors for status indicators
-        vitals: {
-          green:  '#10B981',
-          red:    '#EF4444',
-          amber:  '#F59E0B',
-          blue:   '#3B82F6',
-          purple: '#8B5CF6',
+        // Dark surfaces (charcoal, slightly green-cast)
+        coal: {
+          950: '#0B0D0C',
+          900: '#101312',
+          850: '#141817',
+          800: '#1A1F1D',
+          700: '#252B28',
+          600: '#343B38',
+        },
+        chalk: {
+          DEFAULT: '#E8EBE9', // primary text on dark
+          muted:   '#96A09B', // secondary text on dark
+        },
+        // Single accent — clinical green
+        med: {
+          100: '#DEF0EB',
+          300: '#5FC7B2',
+          400: '#35AD94',
+          500: '#129077',
+          600: '#0E7C66',
+          700: '#0A5F4E',
+          950: '#0A2620',
+        },
+        // Risk semantics (muted, print-like)
+        risk: {
+          high:  '#C4453C',
+          highd: '#E06A5F',
+          mod:   '#A97B22',
+          modd:  '#D9A44A',
+          low:   '#2F7D5F',
+          lowd:  '#57A886',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['IBM Plex Sans', 'IBM Plex Sans Thai', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        micro: ['10px', { letterSpacing: '0.14em', lineHeight: '1.2' }],
       },
       animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade-in':    'fadeIn 0.5s ease-out forwards',
-        'slide-up':   'slideUp 0.5s ease-out forwards',
-        'glow':       'glow 2s ease-in-out infinite alternate',
+        'fade-in':  'fadeIn 0.4s ease-out forwards',
+        'fade-up':  'fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+        'sweep':    'sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+        'blink':    'blink 2.4s ease-in-out infinite',
+        'ecg':      'ecgDash 4s linear infinite',
       },
       keyframes: {
         fadeIn: {
-          '0%':   { opacity: '0', transform: 'translateY(10px)' },
+          '0%':   { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        fadeUp: {
+          '0%':   { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
-        slideUp: {
-          '0%':   { opacity: '0', transform: 'translateY(20px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+        sweep: {
+          '0%':   { left: '-30%' },
+          '100%': { left: '100%' },
         },
-        glow: {
-          '0%':   { boxShadow: '0 0 5px rgba(51, 111, 255, 0.2)' },
-          '100%': { boxShadow: '0 0 20px rgba(51, 111, 255, 0.4)' },
+        blink: {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0.3' },
         },
-      },
-      boxShadow: {
-        'card':      '0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
-        'card-hover': '0 10px 25px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.04)',
-        'medical':   '0 4px 14px rgba(51, 111, 255, 0.12)',
+        ecgDash: {
+          '0%':   { strokeDashoffset: '520' },
+          '100%': { strokeDashoffset: '0' },
+        },
       },
     },
   },

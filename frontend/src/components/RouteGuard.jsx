@@ -1,9 +1,8 @@
 /**
- * WellSim — RouteGuard Component
- * 
+ * WellSim — RouteGuard Component (UI v3)
+ *
  * Wraps protected pages. Checks for a valid auth token in localStorage.
  * Redirects to /login if not authenticated.
- * Provides user data to children via render props pattern.
  */
 
 'use client';
@@ -46,21 +45,24 @@ export default function RouteGuard({ children }) {
     router.push('/login');
   };
 
-  // Show loading while checking auth
+  // Quiet instrument-style loader: mark, sweep line, mono caption
   if (isChecking || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
-            <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center transition-colors duration-300">
+        <div className="text-center animate-fade-in">
+          <div className="w-8 h-8 mx-auto rounded bg-ink dark:bg-chalk flex items-center justify-center">
+            <svg viewBox="0 0 16 16" className="w-4 h-4 text-white dark:text-coal-950">
+              <path d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </div>
-          <p className="text-sm font-semibold text-slate-500">Verifying session...</p>
+          <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
+            <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
+          </div>
+          <p className="microlabel mt-4">Verifying session</p>
         </div>
       </div>
     );
   }
 
-  // Pass children directly
   return children;
 }

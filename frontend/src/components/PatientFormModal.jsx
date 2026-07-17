@@ -1,5 +1,5 @@
 /**
- * WellSim — Patient Form Modal
+ * WellSim — Patient Form Modal (UI v3 "Instrument")
  *
  * Reusable modal for creating and editing patient records.
  * Collects demographics and initial vitals; the backend recalculates
@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Save } from 'lucide-react';
+import { X } from 'lucide-react';
 
 const EMPTY_FORM = {
   name: '',
@@ -100,78 +100,74 @@ export default function PatientFormModal({
     onSubmit(payload);
   };
 
-  const inputClass =
-    'w-full mt-1 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400';
-  const labelClass = 'text-[11px] font-bold text-slate-500 uppercase tracking-wide';
-
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ink/50 dark:bg-black/60 backdrop-blur-[2px] animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+        className="card w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col will-fade-up !bg-surface dark:!bg-coal-900"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-50 border border-blue-100">
-              {mode === 'edit' ? (
-                <Save className="w-4 h-4 text-blue-600" />
-              ) : (
-                <UserPlus className="w-4 h-4 text-blue-600" />
-              )}
-            </div>
-            <h2 className="text-base font-bold text-slate-800">
-              {mode === 'edit' ? 'Edit Patient' : 'Add New Patient'}
+        {/* Head */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline dark:border-coal-700">
+          <div>
+            <p className="microlabel">{mode === 'edit' ? 'Edit record' : 'New record'}</p>
+            <h2 className="text-lg font-light tracking-tight text-ink dark:text-chalk mt-0.5">
+              {mode === 'edit' ? 'Edit patient' : 'Add new patient'}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            aria-label="Close"
+            className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                       text-muted hover:text-ink hover:border-ink/50
+                       dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
+                       transition-colors duration-200"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-5">
+          <div className="p-5 space-y-6">
             {/* Demographics */}
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                Patient Information
-              </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="font-mono text-[10px] text-med-600 dark:text-med-300">A</span>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">Patient information</p>
+                <span className="flex-1 h-px bg-hairline dark:bg-coal-700" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className={labelClass}>Full Name *</label>
+                  <label className="microlabel block mb-1">Full name *</label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setField('name', e.target.value)}
                     placeholder="e.g. Somchai Jaidee"
-                    className={inputClass}
+                    className="field"
                     autoFocus
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Age</label>
+                  <label className="microlabel block mb-1">Age</label>
                   <input
                     type="number"
                     value={form.age}
                     onChange={(e) => setField('age', e.target.value)}
                     placeholder="Years"
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Gender</label>
+                  <label className="microlabel block mb-1">Gender</label>
                   <select
                     value={form.gender}
                     onChange={(e) => setField('gender', e.target.value)}
-                    className={inputClass}
+                    className="field"
                   >
                     <option>Male</option>
                     <option>Female</option>
@@ -179,32 +175,32 @@ export default function PatientFormModal({
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Weight (kg)</label>
+                  <label className="microlabel block mb-1">Weight (kg)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={form.weight}
                     onChange={(e) => setField('weight', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Height (cm)</label>
+                  <label className="microlabel block mb-1">Height (cm)</label>
                   <input
                     type="number"
                     value={form.height}
                     onChange={(e) => setField('height', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className={labelClass}>Check-in Time</label>
+                  <label className="microlabel block mb-1">Check-in time</label>
                   <input
                     type="text"
                     value={form.checkInTime}
                     onChange={(e) => setField('checkInTime', e.target.value)}
                     placeholder="e.g. 19:15 (defaults to now)"
-                    className={inputClass}
+                    className="field font-mono !text-[13px]"
                   />
                 </div>
               </div>
@@ -212,94 +208,87 @@ export default function PatientFormModal({
 
             {/* Vitals */}
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                Initial Vitals &amp; Lab Data
-              </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="font-mono text-[10px] text-med-600 dark:text-med-300">B</span>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk">Initial vitals &amp; lab data</p>
+                <span className="flex-1 h-px bg-hairline dark:bg-coal-700" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelClass}>SpO2 (%)</label>
+                  <label className="microlabel block mb-1">SpO2 (%)</label>
                   <input
                     type="number"
                     value={form.vitals.spo2}
                     onChange={(e) => setVital('spo2', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Heart Rate (bpm)</label>
+                  <label className="microlabel block mb-1">Heart rate (bpm)</label>
                   <input
                     type="number"
                     value={form.vitals.heartRate}
                     onChange={(e) => setVital('heartRate', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Systolic BP</label>
+                  <label className="microlabel block mb-1">Systolic BP</label>
                   <input
                     type="number"
                     value={form.vitals.systolicBP}
                     onChange={(e) => setVital('systolicBP', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Diastolic BP</label>
+                  <label className="microlabel block mb-1">Diastolic BP</label>
                   <input
                     type="number"
                     value={form.vitals.diastolicBP}
                     onChange={(e) => setVital('diastolicBP', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>WBC (/mcL)</label>
+                  <label className="microlabel block mb-1">WBC (/mcL)</label>
                   <input
                     type="number"
                     value={form.vitals.wbc}
                     onChange={(e) => setVital('wbc', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Hemoglobin (g/dL)</label>
+                  <label className="microlabel block mb-1">Hemoglobin (g/dL)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={form.vitals.hemoglobin}
                     onChange={(e) => setVital('hemoglobin', e.target.value)}
-                    className={inputClass}
+                    className="field tabular-nums"
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-2">
-                Leave vitals blank to use healthy defaults. AI risk score is calculated automatically.
+              <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2.5">
+                LEAVE BLANK FOR HEALTHY DEFAULTS — RISK SCORE IS COMPUTED AUTOMATICALLY
               </p>
             </div>
 
             {error && (
-              <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                {error}
-              </p>
+              <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
+                <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
+              </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition"
-            >
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-hairline dark:border-coal-700">
+            <button type="button" onClick={onClose} className="btn-line">
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {mode === 'edit' ? <Save className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-              {submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create Patient'}
+            <button type="submit" disabled={submitting} className="btn-ink">
+              {submitting ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create patient'}
             </button>
           </div>
         </form>

@@ -1,15 +1,32 @@
 /**
- * WellSim — Login Page
- * 
- * Clinical-themed authentication interface.
- * Validates credentials against the Express backend.
+ * WellSim — Login Page (UI v3 "Instrument")
+ *
+ * Quiet, editorial sign-in. Validates credentials against the
+ * Express backend. Theme-aware; one thin ECG trace as the only
+ * ornament — and even that is telemetry.
  */
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, Lock, Mail, Eye, EyeOff, AlertCircle, LogIn } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
+import ThemeToggle from '../../components/ThemeToggle';
+
+function PulseMark({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <path
+        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -72,127 +89,117 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-50/20 flex items-center justify-center p-4">
-      
-      {/* Background pattern */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-200/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-200/20 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-paper dark:bg-coal-950 transition-colors duration-300 flex items-center justify-center p-4">
+
+      {/* Brand — pinned to the page corner like a letterhead */}
+      <div className="fixed top-5 left-5 sm:top-6 sm:left-6 flex items-center gap-3 animate-fade-in">
+        <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
+          <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
+        </div>
+        <div className="leading-tight">
+          <p className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</p>
+          <p className="microlabel">Clinical triage system</p>
+        </div>
       </div>
 
-      <div className="relative w-full max-w-md">
-        
-        {/* Logo & Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 shadow-lg shadow-blue-500/25 mb-4">
-            <Activity className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            Well<span className="text-blue-600">Sim</span>
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Smart Respiratory &amp; Cardiovascular Screening
+      <div className="fixed top-5 right-5 sm:top-6 sm:right-6 animate-fade-in">
+        <ThemeToggle />
+      </div>
+
+      {/* One thin ECG trace along the bottom — telemetry as ornament */}
+      <svg
+        viewBox="0 0 1200 60"
+        preserveAspectRatio="none"
+        className="fixed bottom-16 left-0 w-full h-14 pointer-events-none text-med-600/25 dark:text-med-300/20"
+        aria-hidden="true"
+      >
+        <path
+          d="M0 30 H180 L200 30 210 10 224 50 234 30 H480 L500 30 510 14 524 46 534 30 H780 L800 30 810 8 824 52 834 30 H1080 L1100 30 1110 16 1124 44 1134 30 H1200"
+          fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray="520" className="animate-ecg"
+        />
+      </svg>
+
+      {/* Sign-in card */}
+      <div className="w-full max-w-sm will-fade-up">
+        <div className="card p-7">
+          <p className="microlabel">Authentication</p>
+          <h1 className="text-2xl font-light tracking-tight text-ink dark:text-chalk mt-1.5">Sign in</h1>
+          <p className="text-xs text-muted dark:text-chalk-muted mt-1.5 leading-relaxed">
+            Enter your credentials to access the triage dashboard.
           </p>
-        </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-slate-800">Sign in</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Enter your credentials to access the triage dashboard</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Error Alert */}
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
+              <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
+                <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
               </div>
             )}
 
-            {/* Email Field */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@wellsim.com"
-                  required
-                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition"
-                />
-              </div>
+              <label className="microlabel block mb-1.5">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@wellsim.com"
+                required
+                className="field"
+              />
             </div>
 
-            {/* Password Field */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
+              <label className="microlabel block mb-1.5">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder="••••••••"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition"
+                  className="field !pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 transition"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:text-chalk-muted dark:hover:text-chalk transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-2.5 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl shadow-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-            >
+            <button type="submit" disabled={isLoading} className="btn-ink w-full !py-2.5">
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
+                  <span className="relative w-16 h-px bg-white/30 dark:bg-coal-950/30 overflow-hidden inline-block">
+                    <span className="absolute inset-y-0 w-6 bg-white dark:bg-coal-950 animate-sweep" />
+                  </span>
+                  Signing in
                 </>
               ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  Sign in to Dashboard
-                </>
+                'Sign in to dashboard'
               )}
             </button>
           </form>
 
-          {/* Quick Login Presets (for demo/testing) */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Login (Demo)</p>
+          {/* Demo access */}
+          <div className="mt-6 pt-5 border-t border-hairline dark:border-coal-700">
+            <p className="microlabel mb-2.5">Demo access</p>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => fillCredentials('nurse')}
-                className="px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition active:scale-[0.97]"
-              >
-                🩺 Nurse Login
+              <button onClick={() => fillCredentials('nurse')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
+                Nurse →
               </button>
-              <button
-                onClick={() => fillCredentials('doctor')}
-                className="px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition active:scale-[0.97]"
-              >
-                👨‍⚕️ Doctor Login
+              <button onClick={() => fillCredentials('doctor')} className="btn-line font-mono !text-[11px] uppercase tracking-wider">
+                Doctor →
               </button>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-[11px] text-slate-400 mt-6">
-          WellSim IoT Healthcare Platform — Prototype v1.1
+        <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] mt-5">
+          Prototype v2 · Respiratory &amp; cardiovascular screening
         </p>
       </div>
     </div>
