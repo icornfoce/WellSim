@@ -196,7 +196,3 @@ void sendData() {
 ```
 
 ---
-
-## 📄 License
-
-MIT
