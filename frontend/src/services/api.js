@@ -6,7 +6,23 @@
  * Points to the production backend deployed on Render.
  */
 
-export const API_URL = 'https://wellsim-backend.onrender.com';
+const getApiUrl = () => {
+  if (typeof window === 'undefined') {
+    return 'https://wellsim-backend.onrender.com';
+  }
+  const hostname = window.location.hostname;
+  const isLocal =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+    hostname.endsWith('.local');
+
+  return isLocal ? `http://${hostname}:3001` : 'https://wellsim-backend.onrender.com';
+};
+
+export const API_URL = getApiUrl();
 const DEVICE_BASE = `${API_URL}/api/device`;
 const AUTH_BASE = `${API_URL}/api/auth`;
 const PATIENTS_BASE = `${API_URL}/api/patients`;

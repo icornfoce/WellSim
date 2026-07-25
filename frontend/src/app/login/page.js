@@ -14,6 +14,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
+import { API_URL } from '../../services/api';
 
 function PulseMark({ className = 'w-4 h-4' }) {
   return (
@@ -57,7 +58,6 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const API_URL = 'https://wellsim-backend.onrender.com';
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
