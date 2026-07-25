@@ -521,6 +521,31 @@ function saveReading(record) {
   writeDB(db);
 }
 
+/**
+ * Save audio details for a patient.
+ */
+function savePatientAudio(patientId, type, audioUrl, duration) {
+  const db = readDB();
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return null;
+
+  patient.audioLogs = patient.audioLogs || {
+    lung: { available: false, status: 'Not recorded', duration: '0:00' },
+    heart: { available: false, status: 'Not recorded', duration: '0:00' },
+    cough: { available: false, status: 'Not recorded', duration: '0:00' }
+  };
+
+  patient.audioLogs[type] = {
+    available: true,
+    status: 'Recorded via WellSim IoT Device (INMP441 - I2S)',
+    duration: duration || '0:10',
+    url: audioUrl
+  };
+
+  writeDB(db);
+  return patient;
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -539,4 +564,5 @@ module.exports = {
   updatePatientVitals,
   calculateRisk,
   saveReading,
+  savePatientAudio,
 };

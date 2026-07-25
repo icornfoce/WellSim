@@ -19,6 +19,8 @@ const deviceRoutes = require('./src/routes/device');
 const authRoutes = require('./src/routes/auth');
 const patientRoutes = require('./src/routes/patients');
 
+const path = require('path');
+
 // ─── Create Express App ─────────────────────────────────────────────
 const app = express();
 
@@ -35,8 +37,11 @@ app.use(cors({
 // Request logging
 app.use(morgan('dev'));
 
-// Parse JSON request bodies (with 1MB limit for future audio data)
-app.use(express.json({ limit: '1mb' }));
+// Serve uploaded audio files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Parse JSON request bodies (with 15MB limit for audio data)
+app.use(express.json({ limit: '15mb' }));
 
 // ─── Routes ─────────────────────────────────────────────────────────
 

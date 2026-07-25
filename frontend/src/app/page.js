@@ -12,7 +12,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -201,35 +201,179 @@ function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Audio Playback simulation
-  useEffect(() => {
-    let interval;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setPlayProgress(prev => {
-          if (prev >= 100) {
-            setIsPlaying(false);
-            return 0;
-          }
-          return prev + 5;
-        });
-      }, 500);
-    } else {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
+  const audioRef = useRef(null);
+  const synthRef = useRef(null);
 
-  // Set up edits
+  // Web Audio Context synthesizer for demo/placeholder patient sounds
+  const playDemoSynth = (type) => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === 'heart') {
+        // Low heartbeat thuds
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(55, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        const duration = 15;
+        // Rhythmic lub-dub heartbeat pulses
+        for (let t = 0; t < duration; t += 1.0) {
+          // Lub
+          gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + t);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.12);
+          // Dub
+          gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + t + 0.22);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.40);
+        }
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } else {
+        // Lung breath sound (simulated using modulated triangle wave)
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(90, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0.005, audioCtx.currentTime);
+        const duration = 12;
+        // Slow deep breathing cycle (4 seconds per breath)
+        for (let t = 0; t < duration; t += 4.0) {
+          // Inhale (amplitude and frequency rise)
+          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + t + 1.2);
+          osc.frequency.linearRampToValueAtTime(140, audioCtx.currentTime + t + 1.2);
+          // Exhale (amplitude and frequency fall)
+          gain.gain.linearRampToValueAtTime(0.005, audioCtx.currentTime + t + 3.2);
+          osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + t + 3.2);
+        }
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      }
+
+      return {
+        stop: () => {
+          try {
+            osc.stop();
+            audioCtx.close();
+          } catch (e) {}
+        }
+      };
+    } catch (e) {
+      console.error('AudioContext synth failed:', e);
+      return null;
+    }
+  };
+
+  const handleTogglePlay = () => {
+    const audioLog = patient?.audioLogs?.[activeAudioTab];
+    if (!audioLog || !audioLog.available) return;
+
+    if (isPlaying) {
+      // Pause/Stop
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (synthRef.current) {
+        if (synthRef.current.stop) synthRef.current.stop();
+        if (synthRef.current.interval) clearInterval(synthRef.current.interval);
+        synthRef.current = null;
+      }
+      setIsPlaying(false);
+    } else {
+      // Start Playback
+      setIsPlaying(true);
+      setPlayProgress(0);
+
+      if (audioLog.url) {
+        // Play real uploaded WAV file from the Render backend
+        const fullUrl = audioLog.url.startsWith('http')
+          ? audioLog.url
+          : `https://wellsim-backend.onrender.com${audioLog.url}`;
+
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+
+        const audio = new Audio(fullUrl);
+        audioRef.current = audio;
+
+        audio.addEventListener('timeupdate', () => {
+          if (audio.duration) {
+            setPlayProgress((audio.currentTime / audio.duration) * 100);
+          }
+        });
+
+        audio.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setPlayProgress(0);
+        });
+
+        audio.play().catch(err => {
+          console.error("Audio playback failed:", err);
+          setIsPlaying(false);
+        });
+      } else {
+        // Play simulated synthesizer sound
+        const synth = playDemoSynth(activeAudioTab);
+        synthRef.current = synth;
+
+        const durationSec = activeAudioTab === 'lung' ? 12 : 15;
+        const startTime = Date.now();
+        const interval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          const progress = Math.min((elapsed / durationSec) * 100, 100);
+          setPlayProgress(progress);
+
+          if (progress >= 100) {
+            clearInterval(interval);
+            setIsPlaying(false);
+            if (synthRef.current) {
+              synthRef.current.stop();
+              synthRef.current = null;
+            }
+          }
+        }, 100);
+
+        synthRef.current.interval = interval;
+      }
+    }
+  };
+
+  // Clean up any playing audio on page unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (synthRef.current) {
+        if (synthRef.current.stop) synthRef.current.stop();
+        if (synthRef.current.interval) clearInterval(synthRef.current.interval);
+      }
+    };
+  }, []);
+
+  // Set up edits & reset/cleanup audio when switching patient or tab
   useEffect(() => {
     if (patient && patient.vitals) {
       setEditedVitals({ ...patient.vitals });
     } else {
       setEditedVitals({});
     }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (synthRef.current) {
+      if (synthRef.current.stop) synthRef.current.stop();
+      if (synthRef.current.interval) clearInterval(synthRef.current.interval);
+      synthRef.current = null;
+    }
+
     setIsPlaying(false);
     setPlayProgress(0);
-  }, [selectedPatientId, patient]);
+  }, [selectedPatientId, patient, activeAudioTab]);
 
   // Show loading screen while waiting for the API to fetch patients
   if (!patientsLoaded) {
@@ -818,7 +962,7 @@ function Dashboard() {
                   {/* Player — an ink panel in both themes */}
                   <div className="mt-3 bg-ink dark:bg-coal-850 dark:border dark:border-coal-700 rounded-md p-4 flex items-center gap-4">
                     <button
-                      onClick={() => setIsPlaying(!isPlaying)}
+                      onClick={handleTogglePlay}
                       className="w-10 h-10 rounded bg-med-500 hover:bg-med-400 text-white flex items-center justify-center
                                  flex-shrink-0 transition-colors duration-200 active:translate-y-px"
                     >
