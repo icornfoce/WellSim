@@ -18,11 +18,56 @@ const dbService = require('../services/dbService');
 const { validateDeviceData } = require('../middleware/validation');
 const { requireAuth } = require('../middleware/auth');
 
+// In-memory store for device commands
+// Key: device_id -> Value: { command, patient_id, type }
+const deviceCommands = new Map();
+
+// ─── POST /api/device/command ────────────────────────────────────────
+// Called by Web UI to issue a command (e.g. record)
+router.post('/command', (req, res) => {
+  const { device_id, command, patient_id, type } = req.body;
+  if (!device_id || !command) {
+    return res.status(400).json({ success: false, error: 'Missing device_id or command' });
+  }
+
+  deviceCommands.set(device_id, {
+    command,
+    patient_id: patient_id || 'p1',
+    type: type || 'lung',
+    timestamp: Date.now()
+  });
+
+  res.status(200).json({ success: true, message: `Command '${command}' set for device '${device_id}'` });
+});
+
+// ─── GET /api/device/command ─────────────────────────────────────────
+// Polled by ESP32 to check for pending commands
+router.get('/command', (req, res) => {
+  const { device_id } = req.query;
+  if (!device_id) {
+    return res.status(400).json({ success: false, error: 'Missing device_id parameter' });
+  }
+
+  const cmd = deviceCommands.get(device_id);
+  if (cmd) {
+    // Clear command immediately so it is only executed once
+    deviceCommands.delete(device_id);
+    return res.status(200).json(cmd);
+  }
+
+  res.status(200).json({ command: 'none' });
+});
+
 // ─── POST /api/device/audio ─────────────────────────────────────────
 // Upload base64 encoded audio from ESP32.
 router.post('/audio', (req, res) => {
   try {
     const { device_id, patient_id, audio_base64, type, duration } = req.body;
+    
+    // Clear any pending commands for this device on audio upload
+    if (device_id) {
+      deviceCommands.delete(device_id);
+    }
 
     if (!audio_base64) {
       return res.status(400).json({

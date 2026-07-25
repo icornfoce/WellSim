@@ -340,7 +340,147 @@ function Dashboard() {
     }
   };
 
-  // Clean up any playing audio on page unmount
+  const [isTriggeringESP32, setIsTriggeringESP32] = useState(false);
+  const [esp32TriggerMessage, setEsp32TriggerMessage] = useState('');
+  const [isBrowserRecording, setIsBrowserRecording] = useState(false);
+  const [browserRecordTime, setBrowserRecordTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const triggerESP32Record = async () => {
+    try {
+      setIsTriggeringESP32(true);
+      setEsp32TriggerMessage('Sending command to ESP32...');
+
+      const res = await fetch('https://wellsim-backend.onrender.com/api/device/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: 'ESP32-INMP441-A',
+          command: 'record',
+          patient_id: patient.id,
+          type: activeAudioTab
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setEsp32TriggerMessage('Waiting for ESP32 to record (this takes ~5s)...');
+
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts++;
+          try {
+            const patientsRes = await fetchPatients();
+            if (patientsRes.success && patientsRes.patients) {
+              const updatedPatient = patientsRes.patients.find(p => p.id === patient.id);
+              if (updatedPatient && updatedPatient.audioLogs?.[activeAudioTab]?.available) {
+                clearInterval(interval);
+                setIsTriggeringESP32(false);
+                setEsp32TriggerMessage('');
+                loadPatients();
+                return;
+              }
+            }
+          } catch (e) {
+            console.error('Polling error:', e);
+          }
+
+          if (attempts > 20) {
+            clearInterval(interval);
+            setIsTriggeringESP32(false);
+            setEsp32TriggerMessage('Timeout waiting for ESP32. Please ensure the device is powered on.');
+          }
+        }, 1500);
+      } else {
+        setIsTriggeringESP32(false);
+        setEsp32TriggerMessage('Failed to trigger ESP32: ' + data.error);
+      }
+    } catch (err) {
+      setIsTriggeringESP32(false);
+      setEsp32TriggerMessage('Network error: ' + err.message);
+    }
+  };
+
+  const startBrowserRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64data = reader.result.split(',')[1];
+          try {
+            const res = await fetch('https://wellsim-backend.onrender.com/api/device/audio', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                device_id: 'BROWSER-MIC',
+                patient_id: patient.id,
+                type: activeAudioTab,
+                duration: '0:03',
+                audio_base64: base64data
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              loadPatients();
+            } else {
+              alert('Failed to save audio: ' + data.error);
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Upload failed: ' + err.message);
+          }
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsBrowserRecording(true);
+      setBrowserRecordTime(0);
+
+      let time = 0;
+      const interval = setInterval(() => {
+        time++;
+        setBrowserRecordTime(time);
+        if (time >= 3) {
+          clearInterval(interval);
+          mediaRecorder.stop();
+          setIsBrowserRecording(false);
+        }
+      }, 1000);
+
+      mediaRecorderRef.current.timerInterval = interval;
+    } catch (err) {
+      console.error('Mic access denied:', err);
+      alert('Cannot access microphone: ' + err.message);
+    }
+  };
+
+  const stopBrowserRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current.timerInterval) {
+        clearInterval(mediaRecorderRef.current.timerInterval);
+      }
+      setIsBrowserRecording(false);
+    }
+  };
+
+  // Clean up any playing audio and recording on page unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -350,10 +490,16 @@ function Dashboard() {
         if (synthRef.current.stop) synthRef.current.stop();
         if (synthRef.current.interval) clearInterval(synthRef.current.interval);
       }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current.timerInterval) {
+          clearInterval(mediaRecorderRef.current.timerInterval);
+        }
+      }
     };
   }, []);
 
-  // Set up edits & reset/cleanup audio when switching patient or tab
+  // Set up edits & reset/cleanup audio/recording when switching patient or tab
   useEffect(() => {
     if (patient && patient.vitals) {
       setEditedVitals({ ...patient.vitals });
@@ -370,6 +516,16 @@ function Dashboard() {
       if (synthRef.current.interval) clearInterval(synthRef.current.interval);
       synthRef.current = null;
     }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current.timerInterval) {
+        clearInterval(mediaRecorderRef.current.timerInterval);
+      }
+    }
+    setIsBrowserRecording(false);
+    setIsTriggeringESP32(false);
+    setEsp32TriggerMessage('');
 
     setIsPlaying(false);
     setPlayProgress(0);
@@ -997,11 +1153,53 @@ function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-8 text-center">
-                  <p className="microlabel">{t('audio.none')}</p>
-                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5">
-                    {t('audio.noneDetail')}
-                  </p>
+                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-6 px-4 text-center">
+                  <p className="microlabel mb-2">{t('audio.none')}</p>
+
+                  {isTriggeringESP32 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="w-2.5 h-2.5 bg-med-500 rounded-full animate-ping" />
+                        <span className="font-mono text-xs text-ink dark:text-chalk">ESP32 Action Triggered</span>
+                      </div>
+                      <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
+                        {esp32TriggerMessage}
+                      </p>
+                    </div>
+                  ) : isBrowserRecording ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="w-2.5 h-2.5 bg-risk-high rounded-full animate-pulse" />
+                        <span className="font-mono text-xs text-risk-high">Recording from Browser Mic... ({browserRecordTime}s)</span>
+                      </div>
+                      <button
+                        onClick={stopBrowserRecording}
+                        className="btn-line border-risk-high text-risk-high hover:bg-risk-high/[0.05]"
+                      >
+                        Stop Recording
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
+                        {t('audio.noneDetail')}
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        <button
+                          onClick={triggerESP32Record}
+                          className="btn-line hover:border-med-500 hover:text-med-500"
+                        >
+                          🎙️ Trigger ESP32 Mic
+                        </button>
+                        <button
+                          onClick={startBrowserRecording}
+                          className="btn-line hover:border-risk-mod hover:text-risk-mod"
+                        >
+                          💻 Use Browser Mic
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
