@@ -37,8 +37,21 @@ app.use(cors({
 // Request logging
 app.use(morgan('dev'));
 
-// Serve uploaded audio files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded audio files statically with proper MIME types and CORS
+app.use('/uploads', (req, res, next) => {
+  // Ensure CORS headers are set for audio file requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  next();
+}, express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    // Set correct Content-Type based on file extension
+    if (filePath.endsWith('.webm')) res.setHeader('Content-Type', 'audio/webm');
+    else if (filePath.endsWith('.mp4')) res.setHeader('Content-Type', 'audio/mp4');
+    else if (filePath.endsWith('.ogg')) res.setHeader('Content-Type', 'audio/ogg');
+    else if (filePath.endsWith('.wav')) res.setHeader('Content-Type', 'audio/wav');
+  }
+}));
 
 // Parse JSON request bodies (with 15MB limit for audio data)
 app.use(express.json({ limit: '15mb' }));

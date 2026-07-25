@@ -84,7 +84,7 @@ router.post('/audio', (req, res) => {
     const audioBuffer = Buffer.from(audio_base64, 'base64');
 
     // Create uploads directory if not exists
-    const uploadsDir = path.join(__dirname, '../../../uploads');
+    const uploadsDir = path.join(__dirname, '../../uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }

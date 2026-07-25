@@ -287,7 +287,7 @@ function Dashboard() {
       setPlayProgress(0);
 
       if (audioLog.url) {
-        // Play real uploaded WAV file from the Render backend
+        // Play real uploaded audio file from the backend
         const fullUrl = audioLog.url.startsWith('http')
           ? audioLog.url
           : `${API_URL}${audioLog.url}`;
@@ -297,17 +297,45 @@ function Dashboard() {
         }
 
         const audio = new Audio(fullUrl);
+        audio.crossOrigin = 'anonymous'; // Required for cross-origin audio playback
         audioRef.current = audio;
 
         audio.addEventListener('timeupdate', () => {
-          if (audio.duration) {
-            setPlayProgress((audio.currentTime / audio.duration) * 100);
+          if (audio.duration && isFinite(audio.duration)) {
+            setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
           }
         });
 
         audio.addEventListener('ended', () => {
           setIsPlaying(false);
           setPlayProgress(0);
+        });
+
+        // If real audio file fails to load, fall back to synthesizer
+        audio.addEventListener('error', () => {
+          console.warn('Audio file failed to load, falling back to synthesizer:', fullUrl);
+          audioRef.current = null;
+          const synth = playDemoSynth(activeAudioTab);
+          synthRef.current = synth;
+
+          const durationSec = activeAudioTab === 'lung' ? 12 : activeAudioTab === 'heart' ? 15 : 10;
+          const startTime = Date.now();
+          const interval = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const progress = Math.min(Math.round((elapsed / durationSec) * 100), 100);
+            setPlayProgress(progress);
+
+            if (progress >= 100) {
+              clearInterval(interval);
+              setIsPlaying(false);
+              if (synthRef.current) {
+                synthRef.current.stop();
+                synthRef.current = null;
+              }
+            }
+          }, 100);
+
+          if (synthRef.current) synthRef.current.interval = interval;
         });
 
         audio.play().catch(err => {
