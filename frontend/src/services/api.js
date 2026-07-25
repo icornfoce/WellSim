@@ -6,7 +6,7 @@
  * Points to the production backend deployed on Render.
  */
 
-const API_URL = 'https://wellsim-backend.onrender.com';
+export const API_URL = 'https://wellsim-backend.onrender.com';
 const DEVICE_BASE = `${API_URL}/api/device`;
 const AUTH_BASE = `${API_URL}/api/auth`;
 const PATIENTS_BASE = `${API_URL}/api/patients`;

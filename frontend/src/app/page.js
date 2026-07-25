@@ -33,6 +33,7 @@ import LangToggle from '../components/LangToggle';
 import { useLang } from '../i18n/LanguageContext';
 import { dataDictionaryTH } from '../i18n/translations';
 import {
+  API_URL,
   fetchPatients,
   updatePatientVitals as apiUpdateVitals,
   createPatient as apiCreatePatient,
@@ -289,7 +290,7 @@ function Dashboard() {
         // Play real uploaded WAV file from the Render backend
         const fullUrl = audioLog.url.startsWith('http')
           ? audioLog.url
-          : `https://wellsim-backend.onrender.com${audioLog.url}`;
+          : `${API_URL}${audioLog.url}`;
 
         if (audioRef.current) {
           audioRef.current.pause();
@@ -352,7 +353,7 @@ function Dashboard() {
       setIsTriggeringESP32(true);
       setEsp32TriggerMessage('Sending command to ESP32...');
 
-      const res = await fetch('https://wellsim-backend.onrender.com/api/device/command', {
+      const res = await fetch(`${API_URL}/api/device/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -423,7 +424,7 @@ function Dashboard() {
         reader.onloadend = async () => {
           const base64data = reader.result.split(',')[1];
           try {
-            const res = await fetch('https://wellsim-backend.onrender.com/api/device/audio', {
+            const res = await fetch(`${API_URL}/api/device/audio`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
