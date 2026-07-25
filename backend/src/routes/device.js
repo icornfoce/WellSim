@@ -60,8 +60,34 @@ router.get('/command', (req, res) => {
 
 router.post('/audio', (req, res) => {
   try {
-    const { device_id, patient_id, audio_base64, type, duration, mime_type } = req.body;
+    console.log('📥 Incoming /audio request headers:', req.headers);
     
+    let body = req.body;
+    // If the body is a string (e.g. text/plain), try parsing it as JSON first
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        // Not a JSON string, keep it as raw text
+      }
+    }
+
+    console.log('📥 Incoming /audio request parsed body type:', typeof body);
+
+    let device_id, patient_id, audio_base64, type, duration, mime_type;
+
+    if (body && typeof body === 'object') {
+      device_id = body.device_id;
+      patient_id = body.patient_id;
+      audio_base64 = body.audio_base64;
+      type = body.type;
+      duration = body.duration;
+      mime_type = body.mime_type;
+    } else if (typeof body === 'string') {
+      // Fallback: If body is a raw base64 string
+      audio_base64 = body;
+    }
+
     // Clear any pending commands for this device on audio upload
     if (device_id) {
       deviceCommands.delete(device_id);
@@ -71,6 +97,8 @@ router.post('/audio', (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Missing required field: "audio_base64".',
+        debug_body_type: typeof body,
+        debug_body_preview: typeof body === 'string' ? body.substring(0, 100) : (body ? Object.keys(body) : null)
       });
     }
 

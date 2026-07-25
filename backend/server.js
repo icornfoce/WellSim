@@ -64,9 +64,10 @@ app.use('/api/device', (req, res, next) => {
   next();
 });
 
-// Parse JSON request bodies (with 15MB limit for audio data)
+// Parse JSON, URL-encoded, and raw text request bodies (with 15MB limit for audio data)
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
+app.use(express.text({ limit: '15mb', type: ['text/*', 'application/octet-stream', 'application/json'] }));
 
 // ─── Routes ─────────────────────────────────────────────────────────
 
