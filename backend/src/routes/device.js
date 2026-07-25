@@ -58,11 +58,9 @@ router.get('/command', (req, res) => {
   res.status(200).json({ command: 'none' });
 });
 
-// ─── POST /api/device/audio ─────────────────────────────────────────
-// Upload base64 encoded audio from ESP32.
 router.post('/audio', (req, res) => {
   try {
-    const { device_id, patient_id, audio_base64, type, duration } = req.body;
+    const { device_id, patient_id, audio_base64, type, duration, mime_type } = req.body;
     
     // Clear any pending commands for this device on audio upload
     if (device_id) {
@@ -91,8 +89,16 @@ router.post('/audio', (req, res) => {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    // Save WAV file to uploads folder
-    const filename = `audio_${deviceId}_${audioType}_${Date.now()}.wav`;
+    // Determine extension based on mime_type
+    let ext = 'wav';
+    if (mime_type && typeof mime_type === 'string') {
+      if (mime_type.includes('webm')) ext = 'webm';
+      else if (mime_type.includes('mp4') || mime_type.includes('aac')) ext = 'mp4';
+      else if (mime_type.includes('ogg')) ext = 'ogg';
+    }
+
+    // Save audio file to uploads folder
+    const filename = `audio_${deviceId}_${audioType}_${Date.now()}.${ext}`;
     const filePath = path.join(uploadsDir, filename);
     fs.writeFileSync(filePath, audioBuffer);
 

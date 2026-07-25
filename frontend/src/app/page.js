@@ -408,7 +408,21 @@ function Dashboard() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
-      const mediaRecorder = new MediaRecorder(stream);
+      // Detect supported mime type
+      let options = {};
+      let detectedMime = 'audio/wav';
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        options = { mimeType: 'audio/webm' };
+        detectedMime = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options = { mimeType: 'audio/mp4' };
+        detectedMime = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        options = { mimeType: 'audio/ogg' };
+        detectedMime = 'audio/ogg';
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -418,7 +432,7 @@ function Dashboard() {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const audioBlob = new Blob(audioChunksRef.current, { type: detectedMime });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = async () => {
@@ -432,7 +446,8 @@ function Dashboard() {
                 patient_id: patient.id,
                 type: activeAudioTab,
                 duration: '0:03',
-                audio_base64: base64data
+                audio_base64: base64data,
+                mime_type: detectedMime
               })
             });
             const data = await res.json();
