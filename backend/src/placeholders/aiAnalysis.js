@@ -1,51 +1,43 @@
 /**
- * WellSim Backend — AI Analysis Placeholder
- * 
- * ╔══════════════════════════════════════════════════════════════╗
- * ║  PLACEHOLDER MODULE — Future AI Integration Point           ║
- * ║                                                              ║
- * ║  This module is a stub. When AI analysis is implemented,     ║
- * ║  replace these functions with real ML model integrations.    ║
- * ║                                                              ║
- * ║  Planned capabilities:                                       ║
- * ║  • Respiratory sound classification (wheeze, crackle, etc.) ║
- * ║  • Cardiovascular risk scoring                               ║
- * ║  • Anomaly detection on vital signs                          ║
- * ║  • Real-time alert generation                                ║
- * ╚══════════════════════════════════════════════════════════════╝
+ * WellSim Backend — AI Analysis (compatibility shim)
+ *
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  NO LONGER A PLACEHOLDER                                         ║
+ * ║                                                                  ║
+ * ║  The real engine now lives in src/services/audioAnalysis.js and  ║
+ * ║  runs automatically when a recording is uploaded (see            ║
+ * ║  src/routes/device.js → POST /api/device/audio).                 ║
+ * ║                                                                  ║
+ * ║  This file is kept only so older imports keep resolving. It      ║
+ * ║  delegates to the real module rather than pretending.            ║
+ * ╚══════════════════════════════════════════════════════════════════╝
  */
+
+const audioAnalysis = require('../services/audioAnalysis');
 
 const placeholder = {
   /**
-   * Analyze incoming device data with AI models.
-   * 
-   * FUTURE: This will accept sensor data (audio buffers, vitals)
-   *         and return predictions, risk scores, and alerts.
-   * 
-   * @param {Object} data - Device sensor data record
-   * @returns {Object} Analysis results (currently a no-op stub)
+   * Telemetry-only records (battery, RSSI, temperature) carry no audio,
+   * so there is nothing acoustic to analyse here. Audio arrives on a
+   * separate endpoint and is screened there.
    */
-  analyze(data) {
-    // TODO: Implement AI analysis pipeline
-    // Example future implementation:
-    // const audioFeatures = await extractFeatures(data.audio_buffer);
-    // const prediction = await respiratoryModel.predict(audioFeatures);
-    // const riskScore = await cardiovascularModel.score(data);
-    // return { prediction, riskScore, alerts: [] };
-
+  analyze() {
     return {
-      status: 'not_implemented',
-      message: 'AI analysis module is a placeholder. No predictions generated.',
+      status: 'not_applicable',
+      message:
+        'Telemetry payloads contain no audio. Acoustic screening runs on ' +
+        'POST /api/device/audio via services/audioAnalysis.js.',
+      modelVersion: audioAnalysis.MODEL_VERSION,
     };
   },
 
-  /**
-   * Check if AI analysis is available.
-   * @returns {boolean}
-   */
+  /** The acoustic engine is present and running. */
   isAvailable() {
-    return false;
+    return true;
   },
+
+  analyzeAudio: audioAnalysis.analyze,
+  MODEL_VERSION: audioAnalysis.MODEL_VERSION,
 };
 
 module.exports = { placeholder };

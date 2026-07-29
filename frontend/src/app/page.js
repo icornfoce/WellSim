@@ -24,14 +24,19 @@ import {
   Plus,
   Pencil,
   Trash2,
+  X,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
 import PatientFormModal from '../components/PatientFormModal';
 import ThemeToggle from '../components/ThemeToggle';
 import LangToggle from '../components/LangToggle';
+import AIAnalysisPanel from '../components/AIAnalysisPanel';
 import { useLang } from '../i18n/LanguageContext';
 import { dataDictionaryTH } from '../i18n/translations';
+import { encodeWavFromBlob } from '../lib/audioEncoder';
 import {
   API_URL,
   fetchPatients,
@@ -39,23 +44,26 @@ import {
   createPatient as apiCreatePatient,
   updatePatient as apiUpdatePatient,
   deletePatient as apiDeletePatient,
+  runAnalysis as apiRunAnalysis,
+  fetchAnalyses as apiFetchAnalyses,
+  submitReview as apiSubmitReview,
 } from '../services/api';
 
-// Audio logs are client-side only (not stored in DB yet)
-const DEFAULT_AUDIO_LOGS = {
-  lung: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:12' },
-  heart: { available: true, status: 'Recorded via WellSim IoT Device (INMP441 - I2S)', duration: '0:15' },
-  cough: { available: false, status: 'Not recorded', duration: '0:00' }
-};
+/** Queue ordering: urgent first, then anything a doctor has not signed. */
+const TRIAGE_RANK = { high: 0, moderate: 1, low: 2, pending: 3 };
 
+/**
+ * A recording only counts as available when the backend actually holds
+ * a file for it. Earlier versions marked the seeded demo patients as
+ * "recorded" with no audio behind it, which meant the player fell back
+ * to a synthesiser and the screening engine had nothing to read. A
+ * screening tool must not claim to hold data it does not have.
+ */
 const NO_AUDIO_LOGS = {
   lung: { available: false, status: 'Not recorded', duration: '0:00' },
   heart: { available: false, status: 'Not recorded', duration: '0:00' },
   cough: { available: false, status: 'Not recorded', duration: '0:00' },
 };
-
-// Only the seeded demo patients ship with sample recordings
-const DEMO_AUDIO_IDS = ['p1', 'p2', 'p3'];
 
 export default function Page() {
   return (
@@ -144,6 +152,25 @@ function Dashboard() {
   const [modalMode, setModalMode] = useState('add'); // 'add' | 'edit'
   const [modalSubmitting, setModalSubmitting] = useState(false);
 
+  // ─── AI screening (layer 1) & physician review (layer 2) ──────────
+  const [analyses, setAnalyses] = useState({});
+  const [canReview, setCanReview] = useState(false);
+  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  // Queue search
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Dark mode drives the spectrogram colour ramp
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const read = () => setIsDark(document.documentElement.classList.contains('dark'));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   // Get active patient
   const patient = patients.find(p => p.id === selectedPatientId) || patients[0];
 
@@ -152,11 +179,15 @@ function Dashboard() {
     try {
       const res = await fetchPatients();
       if (res.success && res.patients) {
-        // Add client-side audio logs to each patient
-        const patientsWithAudio = res.patients.map(p => ({
-          ...p,
-          audioLogs: p.audioLogs || (DEMO_AUDIO_IDS.includes(p.id) ? DEFAULT_AUDIO_LOGS : NO_AUDIO_LOGS),
-        }));
+        // Only trust audioLogs that carry a real stored file URL
+        const patientsWithAudio = res.patients.map((p) => {
+          const logs = { ...NO_AUDIO_LOGS };
+          for (const type of ['lung', 'heart', 'cough']) {
+            const stored = p.audioLogs?.[type];
+            if (stored?.available && stored?.url) logs[type] = stored;
+          }
+          return { ...p, audioLogs: logs };
+        });
         setPatients(patientsWithAudio);
         if (!selectedPatientId && patientsWithAudio.length > 0) {
           setSelectedPatientId(patientsWithAudio[0].id);
@@ -172,6 +203,68 @@ function Dashboard() {
   useEffect(() => {
     loadPatients();
   }, [loadPatients]);
+
+  // ─── Load AI analyses for the selected patient ────────────────────
+  const loadAnalyses = useCallback(async (patientId) => {
+    if (!patientId) return;
+    try {
+      const res = await apiFetchAnalyses(patientId);
+      setAnalyses(res.analyses || {});
+      setCanReview(!!res.canReview);
+    } catch (err) {
+      console.error('Failed to load analyses:', err.message);
+      setAnalyses({});
+    }
+  }, []);
+
+  useEffect(() => {
+    setAnalyses({});
+    loadAnalyses(selectedPatientId);
+  }, [selectedPatientId, loadAnalyses]);
+
+  /** Layer 1 — run (or re-run) the screening engine on this recording. */
+  const handleRunAnalysis = async () => {
+    if (!patient) return;
+    setAnalysisRunning(true);
+    try {
+      const res = await apiRunAnalysis(patient.id, activeAudioTab);
+      setAnalyses((prev) => ({ ...prev, [activeAudioTab]: res.analysis }));
+      if (res.patient) {
+        setPatients((prev) =>
+          prev.map((p) => (p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p))
+        );
+      }
+    } catch (err) {
+      console.error('Analysis failed:', err.message);
+      alert(err.message);
+    } finally {
+      setAnalysisRunning(false);
+    }
+  };
+
+  /**
+   * Layer 2 — record the physician's verdict.
+   * The server refuses this for non-doctor accounts; the thrown error
+   * is surfaced to the panel rather than swallowed.
+   */
+  const handleReview = async (verdict) => {
+    if (!patient) return;
+    setReviewSubmitting(true);
+    try {
+      const res = await apiSubmitReview(patient.id, activeAudioTab, verdict);
+      setAnalyses((prev) => ({
+        ...prev,
+        [activeAudioTab]: { ...prev[activeAudioTab], review: res.review },
+      }));
+      if (res.patient) {
+        setPatients((prev) =>
+          prev.map((p) => (p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p))
+        );
+      }
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   // Load user data on client mount
   useEffect(() => {
@@ -408,6 +501,9 @@ function Dashboard() {
                 setIsTriggeringESP32(false);
                 setEsp32TriggerMessage('');
                 loadPatients();
+                // The recording is screened server-side on arrival —
+                // pull the result so the dashboard shows it immediately
+                loadAnalyses(patient.id);
                 return;
               }
             }
@@ -461,46 +557,60 @@ function Dashboard() {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: detectedMime });
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64data = reader.result.split(',')[1];
-          try {
-            const res = await fetch(`${API_URL}/api/device/audio`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                device_id: 'BROWSER-MIC',
-                patient_id: patient.id,
-                type: activeAudioTab,
-                duration: '0:03',
-                audio_base64: base64data,
-                mime_type: detectedMime
-              })
-            });
-            const data = await res.json();
-            if (data.success) {
-              loadPatients();
-            } else {
-              alert('Failed to save audio: ' + data.error);
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Upload failed: ' + err.message);
-          }
-        };
         stream.getTracks().forEach(track => track.stop());
+
+        try {
+          // Transcode to PCM WAV so the analysis engine can actually read
+          // it — MediaRecorder emits WebM/Opus or MP4/AAC, neither of
+          // which the engine decodes.
+          setEsp32TriggerMessage('Converting recording…');
+          const wav = await encodeWavFromBlob(audioBlob);
+          const mins = Math.floor(wav.durationSec / 60);
+          const secs = Math.round(wav.durationSec % 60);
+
+          const res = await fetch(`${API_URL}/api/device/audio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              device_id: 'BROWSER-MIC',
+              patient_id: patient.id,
+              type: activeAudioTab,
+              duration: `${mins}:${String(secs).padStart(2, '0')}`,
+              audio_base64: wav.base64,
+              mime_type: 'audio/wav',
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            // The backend screens on upload — pick the result straight up
+            if (data.analysis) {
+              setAnalyses((prev) => ({ ...prev, [activeAudioTab]: data.analysis }));
+            }
+            loadPatients();
+            loadAnalyses(patient.id);
+          } else {
+            alert('Failed to save audio: ' + data.error);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Upload failed: ' + err.message);
+        } finally {
+          setEsp32TriggerMessage('');
+        }
       };
 
       mediaRecorder.start();
       setIsBrowserRecording(true);
       setBrowserRecordTime(0);
 
+      // The engine needs at least 3 s of signal and reads breathing
+      // cycles best over several breaths — 10 s is the sweet spot.
+      const MAX_SECONDS = 10;
       let time = 0;
       const interval = setInterval(() => {
         time++;
         setBrowserRecordTime(time);
-        if (time >= 3) {
+        if (time >= MAX_SECONDS) {
           clearInterval(interval);
           mediaRecorder.stop();
           setIsBrowserRecording(false);
@@ -679,7 +789,7 @@ function Dashboard() {
       if (modalMode === 'add') {
         const res = await apiCreatePatient(payload);
         if (res.success && res.patient) {
-          const newPatient = { ...res.patient, audioLogs: DEFAULT_AUDIO_LOGS };
+          const newPatient = { ...res.patient, audioLogs: NO_AUDIO_LOGS };
           setPatients((prev) => [...prev, newPatient]);
           setSelectedPatientId(res.patient.id);
         }
@@ -752,6 +862,36 @@ function Dashboard() {
   const bmiValue = calculateBMI(patient.weight, patient.height);
   const v = patient?.vitals || {};
   const has = (x) => x !== null && x !== undefined;
+
+  // The screening result for the recording currently selected
+  const currentAnalysis = analyses?.[activeAudioTab] || null;
+
+  // ─── AI-driven triage queue ───────────────────────────────────────
+  // Urgent cases first, and within the same level the ones no doctor
+  // has signed yet — so the queue answers "who needs me next?" rather
+  // than "who arrived first?".
+  const query = searchQuery.trim().toLowerCase();
+  const visiblePatients = patients
+    .filter((p) => {
+      if (!query) return true;
+      return (
+        String(p.name || '').toLowerCase().includes(query) ||
+        String(p.id || '').toLowerCase().includes(query) ||
+        String(p.age ?? '').includes(query)
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      const byRisk = (TRIAGE_RANK[a.riskStatus] ?? 3) - (TRIAGE_RANK[b.riskStatus] ?? 3);
+      if (byRisk !== 0) return byRisk;
+      // Unreviewed before reviewed at the same urgency
+      const aPending = a.reviewSummary?.pending || 0;
+      const bPending = b.reviewSummary?.pending || 0;
+      if (aPending !== bPending) return bPending - aPending;
+      return String(a.checkInTime || '').localeCompare(String(b.checkInTime || ''));
+    });
+
+  const totalPendingReview = patients.reduce((n, p) => n + (p.reviewSummary?.pending || 0), 0);
 
   return (
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
@@ -845,17 +985,45 @@ function Dashboard() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted/70 dark:text-chalk-muted/70" />
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('queue.search')}
                   className="field !pl-9 !py-1.5 !text-[13px]"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:hover:text-chalk"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+
+              {/* Ordering is a feature, so it is stated, not implied */}
+              <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2 leading-relaxed">
+                {t('queue.sortNote')}
+                {totalPendingReview > 0 && (
+                  <span className="text-risk-mod dark:text-risk-modd">
+                    {' · '}{t('queue.pendingReview', { n: totalPendingReview })}
+                  </span>
+                )}
+              </p>
             </div>
 
             {/* Rows */}
             <div className="flex-1 overflow-y-auto divide-y divide-hairline dark:divide-coal-700">
-              {patients.map((item) => {
+              {visiblePatients.length === 0 && (
+                <p className="px-4 py-6 text-center text-xs text-muted dark:text-chalk-muted">
+                  {t('queue.noMatch', { q: searchQuery })}
+                </p>
+              )}
+              {visiblePatients.map((item) => {
                 const r = getRisk(item.riskStatus);
                 const isSelected = item.id === selectedPatientId;
+                const pending = item.reviewSummary?.pending || 0;
+                const signed = (item.reviewSummary?.confirmed || 0) + (item.reviewSummary?.modified || 0);
                 return (
                   <button
                     key={item.id}
@@ -882,8 +1050,20 @@ function Dashboard() {
                         </span>
                       </span>
                     </span>
-                    <span className={`font-mono text-[10px] shrink-0 ${r.text}`}>
-                      {r.mark && <span className="mr-1">{r.mark}</span>}{r.label}
+                    <span className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`font-mono text-[10px] ${r.text}`}>
+                        {r.mark && <span className="mr-1">{r.mark}</span>}{r.label}
+                      </span>
+                      {/* Review state at a glance */}
+                      {pending > 0 ? (
+                        <span className="flex items-center gap-1 font-mono text-[9px] text-risk-mod dark:text-risk-modd">
+                          <Clock className="w-2.5 h-2.5" />{pending}
+                        </span>
+                      ) : signed > 0 ? (
+                        <span className="flex items-center gap-1 font-mono text-[9px] text-med-600 dark:text-med-300">
+                          <ShieldCheck className="w-2.5 h-2.5" />{signed}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 );
@@ -1169,26 +1349,44 @@ function Dashboard() {
                       {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
                     </button>
 
-                    <div className="relative flex-1 h-10 flex items-center gap-[3px] overflow-hidden">
+                    {/* Waveform — the real amplitude envelope measured
+                        from the recording, with the segments the engine
+                        flagged marked underneath. Falls back to a flat
+                        bar only when no analysis exists yet. */}
+                    <div className="relative flex-1 h-10 flex items-center gap-[2px] overflow-hidden">
                       <div
                         className="absolute top-0 bottom-0 left-0 border-r border-white/50 transition-all duration-300 z-10"
                         style={{ width: `${playProgress}%` }}
                       />
-                      {[...Array(38)].map((_, i) => {
-                        const active = (i / 38) * 100 <= playProgress;
-                        return (
-                          <div
-                            key={i}
-                            className={`flex-1 rounded-[1px] transition-colors duration-300 ${
-                              active ? `bg-med-400 ${isPlaying ? 'eq-bar' : ''}` : 'bg-white/15'
-                            }`}
-                            style={{
-                              height: `${Math.sin(i * 0.4) * 14 + 20}px`,
-                              animationDelay: `${(i % 6) * 0.11}s`,
-                            }}
-                          />
-                        );
-                      })}
+                      {(() => {
+                        const env = currentAnalysis?.waveform;
+                        const bars = env && env.length ? env : new Array(70).fill(0.25);
+                        const duration = currentAnalysis?.durationSec || 0;
+                        return bars.map((amp, i) => {
+                          const active = (i / bars.length) * 100 <= playProgress;
+                          // Is this slice inside a flagged segment?
+                          const tSec = duration ? (i / bars.length) * duration : -1;
+                          const flagged = duration > 0 && (currentAnalysis?.segments || []).some(
+                            (s) => s.type !== 'heart_sound' && tSec >= s.start && tSec <= s.end
+                          );
+                          return (
+                            <div
+                              key={i}
+                              className={`flex-1 min-w-[1px] rounded-[1px] transition-colors duration-300 ${
+                                flagged
+                                  ? 'bg-risk-modd'
+                                  : active
+                                    ? `bg-med-400 ${isPlaying ? 'eq-bar' : ''}`
+                                    : 'bg-white/15'
+                              }`}
+                              style={{
+                                height: `${Math.max(3, amp * 34)}px`,
+                                animationDelay: `${(i % 6) * 0.11}s`,
+                              }}
+                            />
+                          );
+                        });
+                      })()}
                     </div>
 
                     <span className="font-mono text-[10px] text-white/40 tabular-nums w-9 text-right shrink-0">
@@ -1249,86 +1447,40 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* AI analysis */}
+          {/* AI screening (layer 1) + physician review (layer 2) */}
           <div className="card p-5 will-fade-up animate-delay-400">
-            <SectionHead index="04" title={t('ai.title')} />
+            <SectionHead index="04" title={t('ai.title')}>
+              <span className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
+                {t('audio.' + activeAudioTab)}
+              </span>
+            </SectionHead>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center mt-5">
-
-              {/* Instrument dial */}
-              <div className="flex flex-col items-center md:border-r border-hairline dark:border-coal-700 py-2">
-                <div className="relative w-36 h-36">
-                  <svg viewBox="0 0 144 144" className="w-full h-full">
-                    {/* Tick ring */}
-                    {Array.from({ length: 24 }).map((_, i) => (
-                      <line
-                        key={i}
-                        x1="72" y1="4" x2="72" y2={i % 6 === 0 ? '10' : '7'}
-                        transform={`rotate(${i * 15} 72 72)`}
-                        className="stroke-hairline-strong dark:stroke-coal-600"
-                        strokeWidth="1"
-                      />
-                    ))}
-                    <g transform="rotate(-90 72 72)">
-                      <circle cx="72" cy="72" r="54" strokeWidth="4"
-                        className="stroke-hairline dark:stroke-coal-700" fill="transparent" />
-                      <circle
-                        cx="72" cy="72" r="54" strokeWidth="4"
-                        strokeDasharray={2 * Math.PI * 54}
-                        strokeDashoffset={2 * Math.PI * 54 * (1 - (patient?.riskScore || 0) / 100)}
-                        className={`${risk.stroke} transition-all duration-1000 ease-out`}
-                        fill="transparent"
-                      />
-                    </g>
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-4xl font-light tabular-nums text-ink dark:text-chalk leading-none">
-                      {patient?.riskScore || 0}
-                      <span className="font-mono text-sm text-muted dark:text-chalk-muted ml-0.5">%</span>
-                    </span>
-                    <span className="microlabel mt-1.5">{t('ai.probability')}</span>
-                  </div>
-                </div>
-                <p className={`font-mono text-[11px] mt-3 ${risk.text}`}>
-                  {risk.mark && <span className="mr-1">{risk.mark}</span>}{t('ai.riskLine', { label: risk.label })}
-                </p>
-              </div>
-
-              {/* Findings */}
-              <div className="md:col-span-2">
-                <p className="microlabel">{t('ai.biomarkers')}</p>
-                <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
-                  {(patient?.findings || []).map((finding, idx) => (
-                    <li key={idx} className="flex items-start gap-3 py-2.5">
-                      <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
-                        {String(idx + 1).padStart(2, '0')}
-                      </span>
-                      <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{td(finding)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <div className="mt-4">
+              <AIAnalysisPanel
+                analysis={currentAnalysis}
+                type={activeAudioTab}
+                canReview={canReview}
+                running={analysisRunning}
+                progress={playProgress}
+                isDark={isDark}
+                onRun={handleRunAnalysis}
+                onReview={handleReview}
+                reviewSubmitting={reviewSubmitting}
+              />
             </div>
 
-            {/* Actions */}
+            {/* Print / export */}
             <div className="flex flex-col sm:flex-row gap-2 mt-5 pt-5 border-t border-hairline dark:border-coal-700 print-hidden">
-              <button
-                onClick={() => alert(t('alerts.approved', { name: patient.name }))}
-                className="btn-ink flex-1"
-              >
-                {t('actions.approve')}
-              </button>
-              <button
-                onClick={() => alert(t('alerts.retake'))}
-                className="btn-line flex-1"
-              >
-                {t('actions.retake')}
-              </button>
               <button onClick={() => window.print()} className="btn-line flex-1">
                 <Printer className="w-3.5 h-3.5" /> {t('actions.print')}
               </button>
             </div>
           </div>
+
+          {/* Legal position — this is a screening aid, not a diagnosis */}
+          <p className="text-[10px] leading-relaxed text-muted/80 dark:text-chalk-muted/70 border-t border-hairline dark:border-coal-700 pt-3">
+            {t('disclaimer')}
+          </p>
 
           {/* Colophon */}
           <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">

@@ -49,6 +49,8 @@ function readDB() {
     const db = JSON.parse(raw);
     ensurePatientDemo(db);
     ensureNoFakeVitals(db);
+    ensureNoFabricatedAcoustics(db);
+    ensureAudioFilesExist(db);
     return db;
   } catch (error) {
     console.error('❌ DB read error:', error.message);
@@ -139,6 +141,90 @@ function ensureNoFakeVitals(db) {
   }
 }
 
+/**
+ * Migration: earlier seed data asserted acoustic findings ("Wheezing
+ * detected in the lower right lung field…") for patients who had no
+ * recording at all. Now that lung sounds are genuinely analysed, those
+ * sentences are not just decorative — they are false. Replace them with
+ * findings that follow from the vitals actually on record.
+ */
+function ensureNoFabricatedAcoustics(db) {
+  if (!db || !Array.isArray(db.patients)) return;
+
+  const FABRICATED = [
+    'Wheezing detected in the lower right lung field during expiration.',
+    'Data Fusion Indicator: Low SpO2 (93%) correlated with abnormal lung sound pattern.',
+    'Mild cough sound pattern detected with normal lung ventilation.',
+    'No active wheezing or crackles heard.',
+    'All vesicular lung sounds are normal throughout both lung fields.',
+    'Healthy cardiac rhythm with clear S1/S2 sounds.',
+    'Slight tachycardia noted (104 bpm) matching elevated systolic BP.',
+    'Vitals are stable; Blood Pressure is pre-hypertensive.',
+  ];
+  const REPLACEMENTS = {
+    p1: [
+      'SpO₂ 93% — below the 95–100% reference range.',
+      'Tachycardia: 104 bpm alongside a systolic BP of 142 mmHg.',
+      'WBC 12,400/mcL — above reference, consistent with an inflammatory response.',
+      'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
+    ],
+    p2: [
+      'Vitals stable; blood pressure pre-hypertensive at 128/84 mmHg.',
+      'SpO₂ 96% and WBC 8,900/mcL are both within reference.',
+      'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
+    ],
+    p3: [
+      'All recorded vitals are within their reference ranges.',
+      'Oxygen saturation is optimal at 99%.',
+      'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
+    ],
+  };
+
+  let changed = false;
+  for (const p of db.patients) {
+    if (!Array.isArray(p.findings)) continue;
+    if (!p.findings.some((f) => FABRICATED.includes(f))) continue;
+    p.findings = REPLACEMENTS[p.id] || p.findings.filter((f) => !FABRICATED.includes(f));
+    changed = true;
+  }
+
+  if (changed) {
+    writeDB(db);
+    console.log('🔧 Migrated DB: removed seeded acoustic findings with no recording behind them');
+  }
+}
+
+/**
+ * Migration: drop audioLogs entries whose file is no longer on disk.
+ * A dashboard that offers "Play" for a recording the server cannot
+ * produce is worse than one that admits the recording is gone.
+ */
+function ensureAudioFilesExist(db) {
+  if (!db || !Array.isArray(db.patients)) return;
+  const uploadsDir = path.join(__dirname, '../../uploads');
+  let changed = false;
+
+  for (const p of db.patients) {
+    if (!p.audioLogs) continue;
+    for (const type of ['lung', 'heart', 'cough']) {
+      const log = p.audioLogs[type];
+      if (!log || !log.available) continue;
+
+      const exists = log.url && fs.existsSync(path.join(uploadsDir, path.basename(log.url)));
+      if (!exists) {
+        p.audioLogs[type] = { available: false, status: 'Not recorded', duration: '0:00' };
+        if (p.analyses?.[type]) delete p.analyses[type];
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    writeDB(db);
+    console.log('🔧 Migrated DB: cleared audio entries whose files are missing from storage');
+  }
+}
+
 // ─── Default Database Schema ─────────────────────────────────────────
 
 function createDefaultDB() {
@@ -189,10 +275,14 @@ function createDefaultDB() {
           spo2: 93,
           heartRate: 104,
         },
+        // Derived from the vitals above and nothing else. Acoustic
+        // findings are produced by the analysis engine from a real
+        // recording — they are never seeded.
         findings: [
-          'Wheezing detected in the lower right lung field during expiration.',
-          'Slight tachycardia noted (104 bpm) matching elevated systolic BP.',
-          'Data Fusion Indicator: Low SpO2 (93%) correlated with abnormal lung sound pattern.',
+          'SpO₂ 93% — below the 95–100% reference range.',
+          'Tachycardia: 104 bpm alongside a systolic BP of 142 mmHg.',
+          'WBC 12,400/mcL — above reference, consistent with an inflammatory response.',
+          'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
         ],
       },
       {
@@ -214,9 +304,9 @@ function createDefaultDB() {
           heartRate: 82,
         },
         findings: [
-          'Mild cough sound pattern detected with normal lung ventilation.',
-          'Vitals are stable; Blood Pressure is pre-hypertensive.',
-          'No active wheezing or crackles heard.',
+          'Vitals stable; blood pressure pre-hypertensive at 128/84 mmHg.',
+          'SpO₂ 96% and WBC 8,900/mcL are both within reference.',
+          'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
         ],
       },
       {
@@ -238,13 +328,15 @@ function createDefaultDB() {
           heartRate: 70,
         },
         findings: [
-          'All vesicular lung sounds are normal throughout both lung fields.',
-          'Healthy cardiac rhythm with clear S1/S2 sounds.',
+          'All recorded vitals are within their reference ranges.',
           'Oxygen saturation is optimal at 99%.',
+          'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.',
         ],
       },
     ],
     readings: [],
+    // Physician corrections of AI output — the retraining corpus
+    feedback: [],
   };
 }
 
@@ -546,6 +638,254 @@ function savePatientAudio(patientId, type, audioUrl, duration) {
   return patient;
 }
 
+// ─── AI Analysis & Physician Review ──────────────────────────────────
+
+/**
+ * Attach an AI analysis result to a patient.
+ *
+ * Every stored analysis starts life with review.status = 'pending'.
+ * Nothing in this system is ever considered a finding until a doctor
+ * has signed it — the record itself enforces that.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @param {Object} analysis - Result from audioAnalysis.analyze()
+ * @returns {Object|null} The updated patient
+ */
+function savePatientAnalysis(patientId, type, analysis) {
+  const db = readDB();
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return null;
+
+  patient.analyses = patient.analyses || {};
+  patient.analyses[type] = {
+    ...analysis,
+    id: `an_${patientId}_${type}_${Date.now()}`,
+    review: {
+      status: 'pending',
+      doctorId: null,
+      doctorName: null,
+      finalLabel: null,
+      finalTriage: null,
+      note: '',
+      reviewedAt: null,
+    },
+  };
+
+  recomputePatientRisk(patient);
+  writeDB(db);
+  return patient;
+}
+
+/**
+ * Record a physician's verdict on an AI analysis.
+ *
+ * Three outcomes, all of them logged:
+ *   confirm — the doctor agrees with the AI
+ *   modify  — the doctor substitutes their own label and/or triage level
+ *   reject  — the doctor discards the AI result entirely
+ *
+ * A 'modify' or 'reject' is appended to db.feedback, which is the
+ * corpus the model is retrained on. Disagreement is the useful signal
+ * here, so it is captured rather than overwritten.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @param {Object} verdict - { action, finalLabel, finalTriage, note }
+ * @param {Object} doctor - { userId, name, station }
+ * @returns {{ patient: Object, feedback: Object|null }|null}
+ */
+function saveAnalysisReview(patientId, type, verdict, doctor) {
+  const db = readDB();
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return null;
+
+  const analysis = patient.analyses?.[type];
+  if (!analysis) return { error: 'NO_ANALYSIS' };
+
+  const action = verdict.action; // 'confirm' | 'modify' | 'reject'
+  const statusMap = { confirm: 'confirmed', modify: 'modified', reject: 'rejected' };
+  const status = statusMap[action];
+  if (!status) return { error: 'INVALID_ACTION' };
+
+  const finalLabel =
+    action === 'confirm' ? analysis.label
+    : action === 'modify' ? (verdict.finalLabel || analysis.label)
+    : null;
+
+  const finalTriage =
+    action === 'confirm' ? analysis.triage?.level
+    : action === 'modify' ? (verdict.finalTriage || analysis.triage?.level)
+    : null;
+
+  analysis.review = {
+    status,
+    doctorId: doctor.userId,
+    doctorName: doctor.name,
+    doctorStation: doctor.station || null,
+    finalLabel,
+    finalTriage,
+    note: String(verdict.note || '').slice(0, 2000),
+    reviewedAt: new Date().toISOString(),
+  };
+
+  // ── Feedback loop ──
+  let feedback = null;
+  if (action === 'modify' || action === 'reject') {
+    db.feedback = db.feedback || [];
+    feedback = {
+      id: `fb_${Date.now()}`,
+      analysisId: analysis.id,
+      patientId,
+      type,
+      audioUrl: patient.audioLogs?.[type]?.url || null,
+      modelVersion: analysis.modelVersion,
+      aiLabel: analysis.label,
+      aiConfidence: analysis.confidence,
+      aiTriage: analysis.triage?.level,
+      doctorLabel: finalLabel,
+      doctorTriage: finalTriage,
+      action,
+      note: analysis.review.note,
+      doctorId: doctor.userId,
+      doctorName: doctor.name,
+      createdAt: analysis.review.reviewedAt,
+    };
+    db.feedback.push(feedback);
+    if (db.feedback.length > 2000) db.feedback = db.feedback.slice(-2000);
+  }
+
+  recomputePatientRisk(patient);
+  writeDB(db);
+  return { patient, feedback };
+}
+
+/**
+ * Recompute a patient's headline risk from every available source.
+ *
+ * Precedence:
+ *   1. A doctor's confirmed/modified triage level always wins.
+ *   2. Otherwise the highest AI triage level across recordings.
+ *   3. Otherwise the vitals-only risk calculation.
+ *
+ * Mutates the patient in place; the caller writes the DB.
+ */
+function recomputePatientRisk(patient) {
+  const rank = { low: 1, moderate: 2, high: 3 };
+  const levelToStatus = { green: 'low', yellow: 'moderate', red: 'high' };
+
+  let best = null;      // { status, score, source }
+  let doctorSigned = false;
+
+  for (const type of ['lung', 'heart', 'cough']) {
+    const a = patient.analyses?.[type];
+    if (!a || a.status !== 'ok') continue;
+
+    const review = a.review || {};
+    if (review.status === 'rejected') continue; // doctor threw it out
+
+    const level = review.status === 'confirmed' || review.status === 'modified'
+      ? (review.finalTriage || a.triage?.level)
+      : a.triage?.level;
+    if (!level) continue;
+
+    const status = levelToStatus[level] || 'low';
+    const isDoctor = review.status === 'confirmed' || review.status === 'modified';
+    const score = a.triage?.score ?? 0;
+
+    // A doctor's verdict outranks any unreviewed AI result
+    if (isDoctor && !doctorSigned) {
+      best = { status, score, source: `physician (${review.doctorName || 'unknown'})` };
+      doctorSigned = true;
+    } else if (isDoctor && doctorSigned) {
+      if (rank[status] > rank[best.status]) best = { status, score, source: best.source };
+    } else if (!doctorSigned) {
+      if (!best || rank[status] > rank[best.status]) {
+        best = { status, score, source: `AI (${type}, awaiting review)` };
+      }
+    }
+  }
+
+  // Fall back to the vitals-only calculation
+  if (!best && patient.vitals) {
+    const v = calculateRisk(patient.vitals);
+    best = { status: v.riskStatus, score: v.riskScore, source: 'vitals only' };
+  }
+
+  if (best) {
+    patient.riskStatus = best.status;
+    patient.riskScore = best.score;
+    patient.riskSource = best.source;
+  } else {
+    patient.riskStatus = 'pending';
+    patient.riskScore = 0;
+    patient.riskSource = 'not screened';
+  }
+
+  // Roll up the review state so the queue can show it without
+  // unpacking every analysis
+  const analyses = Object.values(patient.analyses || {}).filter(a => a && a.status === 'ok');
+  patient.reviewSummary = {
+    total: analyses.length,
+    pending: analyses.filter(a => (a.review?.status || 'pending') === 'pending').length,
+    confirmed: analyses.filter(a => a.review?.status === 'confirmed').length,
+    modified: analyses.filter(a => a.review?.status === 'modified').length,
+    rejected: analyses.filter(a => a.review?.status === 'rejected').length,
+  };
+
+  return patient;
+}
+
+/** The accumulated physician-correction dataset, newest first. */
+function getFeedback(limit = 200) {
+  const db = readDB();
+  return (db.feedback || []).slice(-limit).reverse();
+}
+
+/**
+ * Agreement statistics between the AI and the reviewing physicians.
+ * These are the Phase 4 metrics from the test plan, computed live.
+ */
+function getAgreementStats() {
+  const db = readDB();
+  let confirmed = 0;
+  let modified = 0;
+  let rejected = 0;
+  let pending = 0;
+  const perLabel = {};
+
+  for (const patient of db.patients || []) {
+    for (const type of ['lung', 'heart', 'cough']) {
+      const a = patient.analyses?.[type];
+      if (!a || a.status !== 'ok') continue;
+      const s = a.review?.status || 'pending';
+      if (s === 'confirmed') confirmed++;
+      else if (s === 'modified') modified++;
+      else if (s === 'rejected') rejected++;
+      else pending++;
+
+      if (s !== 'pending') {
+        perLabel[a.label] = perLabel[a.label] || { reviewed: 0, agreed: 0 };
+        perLabel[a.label].reviewed++;
+        if (s === 'confirmed') perLabel[a.label].agreed++;
+      }
+    }
+  }
+
+  const reviewed = confirmed + modified + rejected;
+  return {
+    reviewed,
+    pending,
+    confirmed,
+    modified,
+    rejected,
+    // Raw agreement. Cohen's κ needs a balanced labelled set and is
+    // computed offline during Phase 4 — not claimed here.
+    rawAgreement: reviewed ? +(confirmed / reviewed).toFixed(3) : null,
+    perLabel,
+  };
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -565,4 +905,9 @@ module.exports = {
   calculateRisk,
   saveReading,
   savePatientAudio,
+  savePatientAnalysis,
+  saveAnalysisReview,
+  recomputePatientRisk,
+  getFeedback,
+  getAgreementStats,
 };

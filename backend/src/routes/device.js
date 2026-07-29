@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const deviceService = require('../services/deviceService');
 const dbService = require('../services/dbService');
+const { getPatientById } = require('../services/dbService');
 const { validateDeviceData } = require('../middleware/validation');
 const { requireAuth } = require('../middleware/auth');
 
@@ -145,11 +146,36 @@ router.post('/audio', (req, res) => {
 
     console.log(`🔊 Audio file saved: ${audioUrl} for patient ${targetPatientId}`);
 
+    // ── Layer 1: screen the recording immediately ──
+    // Running this on upload rather than on demand means a field worker
+    // gets a triage level before they have even put the device down.
+    // The result is stored as "awaiting physician confirmation".
+    let analysis = null;
+    try {
+      const { runAnalysisFor } = require('./analysis');
+      const result = runAnalysisFor(targetPatientId, audioType);
+      if (result.ok) {
+        analysis = result.analysis;
+        console.log(
+          `🧠 Auto-analysis (${audioType}): ${analysis.label} @ ${analysis.confidence} ` +
+          `→ triage ${analysis.triage?.level}`
+        );
+      } else {
+        console.warn(`⚠️ Auto-analysis skipped: ${result.message}`);
+      }
+    } catch (e) {
+      // A failure here must never lose the recording itself
+      console.error('⚠️ Auto-analysis failed (audio was still saved):', e.message);
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Audio received and saved successfully.',
+      message: analysis
+        ? 'Audio received, saved, and screened. Awaiting physician confirmation.'
+        : 'Audio received and saved successfully.',
       audioUrl,
-      patient: updatedPatient,
+      patient: analysis ? getPatientById(targetPatientId) : updatedPatient,
+      analysis,
     });
   } catch (error) {
     console.error('❌ Error saving audio data:', error.message);

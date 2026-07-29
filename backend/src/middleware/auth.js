@@ -103,8 +103,39 @@ function requireAuth(req, res, next) {
   next();
 }
 
+/**
+ * Restrict a route to specific roles. Always used *after* requireAuth.
+ *
+ * The physician-review endpoints depend on this: an AI result may only
+ * be confirmed, modified, or rejected by a user whose role is 'doctor'.
+ * A nurse can see the result and its status, but cannot sign it off.
+ *
+ * @param {...string} roles - Allowed roles, e.g. requireRole('doctor')
+ */
+function requireRole(...roles) {
+  return function (req, res, next) {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required.',
+      });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: `This action requires the role: ${roles.join(' or ')}. ` +
+               `Your account is registered as "${req.user.role}".`,
+        requiredRoles: roles,
+        yourRole: req.user.role,
+      });
+    }
+    next();
+  };
+}
+
 module.exports = {
   generateToken,
   verifyToken,
   requireAuth,
+  requireRole,
 };

@@ -18,6 +18,7 @@ const config = require('./config');
 const deviceRoutes = require('./src/routes/device');
 const authRoutes = require('./src/routes/auth');
 const patientRoutes = require('./src/routes/patients');
+const analysisRoutes = require('./src/routes/analysis');
 
 const path = require('path');
 
@@ -80,6 +81,9 @@ app.use('/api/auth', authRoutes);
 // Patient management routes
 app.use('/api/patients', patientRoutes);
 
+// AI analysis (layer 1) & physician review (layer 2) routes
+app.use('/api/analysis', analysisRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -128,6 +132,13 @@ app.listen(config.PORT, () => {
   console.log('║  POST   /api/patients     — Create patient (auth)    ║');
   console.log('║  PUT    /api/patients/:id — Update patient (auth)    ║');
   console.log('║  DELETE /api/patients/:id — Delete patient (auth)    ║');
+  console.log('║                                                      ║');
+  console.log('║  AI screening (layer 1) & review (layer 2):          ║');
+  console.log('║  POST /api/analysis/run              — Screen audio  ║');
+  console.log('║  GET  /api/analysis/:pid             — Get results   ║');
+  console.log('║  POST /api/analysis/:pid/:type/review — DOCTOR ONLY  ║');
+  console.log('║  GET  /api/analysis/stats/agreement  — AI vs doctor  ║');
+  console.log('║  GET  /api/analysis/feedback/export  — Retrain data  ║');
   console.log('║  GET    /api/health       — Health check             ║');
   console.log('╚══════════════════════════════════════════════════════╝');
   console.log('');

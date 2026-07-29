@@ -42,6 +42,9 @@ export const translations = {
       addTitle: 'Add new patient',
       search: 'Search patients…',
       age: 'AGE',
+      sortNote: 'Sorted by AI triage priority — urgent first',
+      noMatch: 'No patients match “{q}”',
+      pendingReview: '{n} awaiting review',
     },
     risk: {
       high: 'HIGH',
@@ -98,10 +101,64 @@ export const translations = {
       recorded: 'Recorded',
     },
     ai: {
-      title: 'AI Analysis & Decision',
+      title: 'AI Screening & Physician Review',
       probability: 'Probability',
       biomarkers: 'Diagnostic biomarkers',
       riskLine: '{label} RISK',
+      // Layer 1 — screening
+      aiScreening: 'AI screening result',
+      physicianDx: 'Physician diagnosis',
+      aiSaidRejected: 'AI result (rejected by physician)',
+      aiOriginally: 'AI originally reported',
+      confidence: 'Confidence',
+      triage: 'Triage',
+      evidence: 'Measured evidence',
+      differentials: 'Differentials to consider',
+      noDifferentials: 'None flagged.',
+      signalQuality: 'Signal quality',
+      peak: 'peak',
+      noResult: 'Not screened yet',
+      noResultDetail:
+        'No AI screening has been run on this recording. Screening runs automatically on upload; use the button below to run it manually.',
+      run: 'Run AI screening',
+      rerun: 'Re-run',
+      running: 'Analysing…',
+      retry: 'Try again',
+      cannotAnalyse: 'Cannot analyse this recording',
+      // Review status
+      statusPending: 'Awaiting physician confirmation',
+      statusConfirmed: 'Confirmed by physician',
+      statusModified: 'Modified by physician',
+      statusRejected: 'Rejected by physician',
+      pendingDetail:
+        'This is a screening result, not a diagnosis. It carries no clinical weight until a doctor reviews it.',
+      // Layer 2 — review
+      reviewTitle: 'Physician review — your decision is final',
+      confirm: 'Confirm AI result',
+      modify: 'Modify',
+      reject: 'Reject',
+      yourDiagnosis: 'Your diagnosis',
+      yourTriage: 'Your triage level',
+      keepAiLabel: 'Keep AI label',
+      keepAiTriage: 'Keep AI triage',
+      noteRequired: 'Reason for rejection (required)',
+      noteOptional: 'Clinical note (optional)',
+      notePlaceholder: 'What did you hear that the engine missed or got wrong?',
+      feedbackNote: 'Corrections are logged and used to retrain the model.',
+      saveDiagnosis: 'Save my diagnosis',
+      confirmReject: 'Confirm rejection',
+      saving: 'Saving…',
+      reReview: 'You can revise this review at any time.',
+      nurseNotice:
+        'Screening results must be confirmed by a doctor before they count as a finding. Your account cannot sign off results — a doctor will review this case.',
+      errRejectNote: 'Please give a reason — it is what the model learns from.',
+      errModifyEmpty: 'Choose a diagnosis or a triage level to change.',
+    },
+    triage: {
+      red: 'RED · URGENT',
+      yellow: 'YELLOW · REVIEW',
+      green: 'GREEN · ROUTINE',
+      pending: 'NOT SCREENED',
     },
     actions: {
       approve: 'Approve triage & send',
@@ -122,6 +179,8 @@ export const translations = {
       add: 'Add patient',
     },
     colophon: 'WellSim · Clinical triage system · Prototype',
+    disclaimer:
+      'WellSim is a clinical decision support tool for preliminary screening only. AI output is not a diagnosis and carries no clinical weight until confirmed by a licensed physician. Data is collected with patient consent under the Personal Data Protection Act (PDPA).',
     brand: {
       tagline: 'Clinical triage system',
     },
@@ -248,6 +307,9 @@ export const translations = {
       addTitle: 'เพิ่มผู้ป่วยใหม่',
       search: 'ค้นหาผู้ป่วย…',
       age: 'อายุ',
+      sortNote: 'เรียงตามความเร่งด่วนที่ AI ประเมิน — ด่วนขึ้นก่อน',
+      noMatch: 'ไม่พบผู้ป่วยที่ตรงกับ “{q}”',
+      pendingReview: 'รอแพทย์ตรวจสอบ {n} รายการ',
     },
     risk: {
       high: 'สูง',
@@ -304,10 +366,64 @@ export const translations = {
       recorded: 'บันทึกแล้ว',
     },
     ai: {
-      title: 'การวิเคราะห์และตัดสินใจด้วย AI',
+      title: 'การคัดกรองด้วย AI และการประเมินโดยแพทย์',
       probability: 'ความน่าจะเป็น',
       biomarkers: 'ตัวชี้วัดเพื่อการวินิจฉัย',
       riskLine: 'ความเสี่ยง{label}',
+      // ชั้นที่ 1 — AI คัดกรอง
+      aiScreening: 'ผลคัดกรองโดย AI',
+      physicianDx: 'การวินิจฉัยโดยแพทย์',
+      aiSaidRejected: 'ผล AI (แพทย์ปฏิเสธ)',
+      aiOriginally: 'AI รายงานเดิมว่า',
+      confidence: 'ความเชื่อมั่น',
+      triage: 'ระดับความเร่งด่วน',
+      evidence: 'หลักฐานที่วัดได้',
+      differentials: 'โรคที่ควรพิจารณาแยก',
+      noDifferentials: 'ไม่มี',
+      signalQuality: 'คุณภาพสัญญาณ',
+      peak: 'ค่าสูงสุด',
+      noResult: 'ยังไม่ได้คัดกรอง',
+      noResultDetail:
+        'ยังไม่มีการวิเคราะห์เสียงนี้ด้วย AI โดยปกติระบบจะวิเคราะห์อัตโนมัติเมื่ออัปโหลด หรือกดปุ่มด้านล่างเพื่อวิเคราะห์เอง',
+      run: 'วิเคราะห์ด้วย AI',
+      rerun: 'วิเคราะห์ใหม่',
+      running: 'กำลังวิเคราะห์…',
+      retry: 'ลองใหม่',
+      cannotAnalyse: 'ไม่สามารถวิเคราะห์เสียงนี้ได้',
+      // สถานะการตรวจสอบ
+      statusPending: 'รอแพทย์ยืนยัน',
+      statusConfirmed: 'แพทย์ยืนยันแล้ว',
+      statusModified: 'แพทย์แก้ไขผลแล้ว',
+      statusRejected: 'แพทย์ปฏิเสธผลนี้',
+      pendingDetail:
+        'นี่คือผลคัดกรองเบื้องต้น ไม่ใช่การวินิจฉัย และยังไม่มีผลทางคลินิกจนกว่าแพทย์จะตรวจสอบ',
+      // ชั้นที่ 2 — แพทย์ตัดสิน
+      reviewTitle: 'การประเมินโดยแพทย์ — คำตัดสินของท่านถือเป็นที่สิ้นสุด',
+      confirm: 'ยืนยันผล AI',
+      modify: 'แก้ไขผล',
+      reject: 'ปฏิเสธผล',
+      yourDiagnosis: 'การวินิจฉัยของท่าน',
+      yourTriage: 'ระดับความเร่งด่วนที่ท่านกำหนด',
+      keepAiLabel: 'ใช้ผลเดิมของ AI',
+      keepAiTriage: 'ใช้ระดับเดิมของ AI',
+      noteRequired: 'เหตุผลที่ปฏิเสธ (จำเป็น)',
+      noteOptional: 'บันทึกทางคลินิก (ไม่บังคับ)',
+      notePlaceholder: 'ท่านได้ยินอะไรที่ระบบวิเคราะห์พลาดหรือผิดพลาด',
+      feedbackNote: 'ข้อมูลที่แพทย์แก้ไขจะถูกบันทึกไว้เพื่อนำไปพัฒนาโมเดลต่อไป',
+      saveDiagnosis: 'บันทึกการวินิจฉัยของฉัน',
+      confirmReject: 'ยืนยันการปฏิเสธ',
+      saving: 'กำลังบันทึก…',
+      reReview: 'ท่านสามารถแก้ไขการประเมินนี้ได้ตลอดเวลา',
+      nurseNotice:
+        'ผลคัดกรองต้องได้รับการยืนยันจากแพทย์ก่อนจึงจะถือเป็นผลการตรวจ บัญชีของท่านไม่มีสิทธิ์ยืนยันผล แพทย์จะเป็นผู้ตรวจสอบเคสนี้',
+      errRejectNote: 'กรุณาระบุเหตุผล เพราะเป็นข้อมูลที่ใช้พัฒนาโมเดล',
+      errModifyEmpty: 'กรุณาเลือกการวินิจฉัยหรือระดับความเร่งด่วนที่ต้องการแก้ไข',
+    },
+    triage: {
+      red: 'แดง · ด่วน',
+      yellow: 'เหลือง · ควรตรวจ',
+      green: 'เขียว · ปกติ',
+      pending: 'ยังไม่คัดกรอง',
     },
     actions: {
       approve: 'อนุมัติการคัดกรองและส่งต่อ',
@@ -328,6 +444,8 @@ export const translations = {
       add: 'เพิ่มผู้ป่วย',
     },
     colophon: 'WellSim · ระบบคัดกรองผู้ป่วย · เวอร์ชันต้นแบบ',
+    disclaimer:
+      'WellSim เป็นเครื่องมือช่วยตัดสินใจทางคลินิกสำหรับการคัดกรองเบื้องต้นเท่านั้น ผลจาก AI ไม่ถือเป็นการวินิจฉัยโรค และไม่มีผลทางคลินิกจนกว่าจะได้รับการยืนยันจากแพทย์ผู้มีใบประกอบวิชาชีพ การเก็บข้อมูลดำเนินการภายใต้ความยินยอมของผู้ป่วยและเป็นไปตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)',
     brand: {
       tagline: 'ระบบคัดกรองผู้ป่วย',
     },
@@ -425,24 +543,23 @@ export const translations = {
  * by staff stays in whatever language it was written in.
  */
 export const dataDictionaryTH = {
-  'Wheezing detected in the lower right lung field during expiration.':
-    'ตรวจพบเสียงหวีด (wheezing) ที่ปอดขวาส่วนล่างขณะหายใจออก',
-  'Slight tachycardia noted (104 bpm) matching elevated systolic BP.':
-    'หัวใจเต้นเร็วเล็กน้อย (104 ครั้ง/นาที) สอดคล้องกับความดันตัวบนที่สูง',
-  'Data Fusion Indicator: Low SpO2 (93%) correlated with abnormal lung sound pattern.':
-    'ตัวชี้วัดจากการรวมข้อมูล: SpO2 ต่ำ (93%) สัมพันธ์กับรูปแบบเสียงปอดที่ผิดปกติ',
-  'Mild cough sound pattern detected with normal lung ventilation.':
-    'พบรูปแบบเสียงไอเล็กน้อย การระบายอากาศของปอดปกติ',
-  'Vitals are stable; Blood Pressure is pre-hypertensive.':
-    'สัญญาณชีพคงที่ ความดันโลหิตอยู่ในระดับก่อนความดันสูง',
-  'No active wheezing or crackles heard.':
-    'ไม่พบเสียงหวีดหรือเสียงกรอบแกรบผิดปกติ',
-  'All vesicular lung sounds are normal throughout both lung fields.':
-    'เสียงหายใจปกติทั่วทั้งปอดสองข้าง',
-  'Healthy cardiac rhythm with clear S1/S2 sounds.':
-    'จังหวะการเต้นหัวใจปกติ เสียง S1/S2 ชัดเจน',
+  // Vitals-derived findings on the seeded demo records
+  'SpO₂ 93% — below the 95–100% reference range.':
+    'SpO₂ 93% — ต่ำกว่าค่าอ้างอิง 95–100%',
+  'Tachycardia: 104 bpm alongside a systolic BP of 142 mmHg.':
+    'หัวใจเต้นเร็ว 104 ครั้ง/นาที ร่วมกับความดันตัวบน 142 mmHg',
+  'WBC 12,400/mcL — above reference, consistent with an inflammatory response.':
+    'เม็ดเลือดขาว 12,400/mcL — สูงกว่าค่าอ้างอิง สอดคล้องกับภาวะอักเสบ',
+  'Vitals stable; blood pressure pre-hypertensive at 128/84 mmHg.':
+    'สัญญาณชีพคงที่ ความดันโลหิต 128/84 mmHg อยู่ในระดับก่อนความดันสูง',
+  'SpO₂ 96% and WBC 8,900/mcL are both within reference.':
+    'SpO₂ 96% และเม็ดเลือดขาว 8,900/mcL อยู่ในเกณฑ์ปกติทั้งคู่',
+  'All recorded vitals are within their reference ranges.':
+    'สัญญาณชีพที่บันทึกไว้ทั้งหมดอยู่ในเกณฑ์ปกติ',
   'Oxygen saturation is optimal at 99%.':
     'ค่าความอิ่มตัวออกซิเจนในเลือดดีมากที่ 99%',
+  'No bio-acoustic recording on file yet — capture lung audio to screen for wheeze or crackles.':
+    'ยังไม่มีไฟล์เสียงชีวภาพในระบบ — กรุณาบันทึกเสียงปอดเพื่อคัดกรองเสียงหวีดหรือเสียงกรอบแกรบ',
   'New patient record created. Awaiting IoT diagnostic screening.':
     'สร้างระเบียนผู้ป่วยใหม่แล้ว รอการตรวจคัดกรองด้วยอุปกรณ์ IoT',
   'Recorded via WellSim IoT Device (INMP441 - I2S)':

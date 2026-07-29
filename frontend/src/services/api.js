@@ -26,6 +26,7 @@ export const API_URL = getApiUrl();
 const DEVICE_BASE = `${API_URL}/api/device`;
 const AUTH_BASE = `${API_URL}/api/auth`;
 const PATIENTS_BASE = `${API_URL}/api/patients`;
+const ANALYSIS_BASE = `${API_URL}/api/analysis`;
 
 // ─── Helper: Get auth headers ────────────────────────────────────────
 
@@ -279,6 +280,83 @@ export async function register({ name, email, password, role, station }) {
   }
 
   return data;
+}
+
+// ─── AI Analysis & Physician Review API ──────────────────────────────
+
+/** Shared response unwrapper for the analysis endpoints. */
+async function unwrap(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    const err = new Error(data.error || `HTTP ${response.status}`);
+    err.status = response.status;
+    err.requiredRoles = data.requiredRoles;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Layer 1 — run the screening engine over a stored recording.
+ * Any authenticated clinical user may trigger this.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @returns {Promise<Object>} { success, analysis, patient }
+ */
+export async function runAnalysis(patientId, type) {
+  return unwrap(await fetch(`${ANALYSIS_BASE}/run`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ patient_id: patientId, type }),
+  }));
+}
+
+/**
+ * Fetch every stored analysis for a patient, with review state.
+ *
+ * @param {string} patientId
+ * @returns {Promise<Object>} { success, analyses, reviewSummary, canReview }
+ */
+export async function fetchAnalyses(patientId) {
+  return unwrap(await fetch(`${ANALYSIS_BASE}/${patientId}`, {
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  }));
+}
+
+/**
+ * Layer 2 — a physician's verdict on an AI result.
+ * The server rejects this with 403 for any non-doctor account.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @param {Object} verdict - { action: 'confirm'|'modify'|'reject', finalLabel?, finalTriage?, note? }
+ * @returns {Promise<Object>} { success, review, patient, feedbackLogged }
+ */
+export async function submitReview(patientId, type, verdict) {
+  return unwrap(await fetch(`${ANALYSIS_BASE}/${patientId}/${type}/review`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(verdict),
+  }));
+}
+
+/**
+ * Live AI-versus-physician agreement statistics.
+ *
+ * @returns {Promise<Object>} { success, modelVersion, stats }
+ */
+export async function fetchAgreementStats() {
+  return unwrap(await fetch(`${ANALYSIS_BASE}/stats/agreement`, {
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  }));
+}
+
+/** URL of the physician-correction dataset export (doctors only). */
+export function feedbackExportUrl(format = 'json') {
+  return `${ANALYSIS_BASE}/feedback/export?format=${format}`;
 }
 
 /**

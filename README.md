@@ -1,20 +1,49 @@
-# 🫁 WellSim — IoT Healthcare Dashboard
+# 🫁 WellSim — AI-Assisted Telemedicine Screening
 
-> AI-powered Respiratory & Cardiovascular Screening System (Prototype)
+> Two-layer respiratory & cardiovascular screening: an AI engine screens every
+> recording, and a physician has the final word on all of them.
 
-Real-time monitoring dashboard that receives sensor data from ESP32 IoT devices and displays it on a modern medical dashboard.
+A low-cost ESP32 device captures lung, heart, and cough audio alongside vital
+signs. The backend analyses the audio, assigns a triage level, and holds the
+result as **"awaiting physician confirmation"** until a doctor confirms,
+modifies, or rejects it. Every disagreement is logged as training data.
 
 ---
 
 ## 📐 Architecture
 
 ```
-ESP32 Device ──HTTP POST──▶ Express API (:3001) ──Store──▶ In-Memory Map
-                                    ▲                          │
-                                    │                          ▼
-                           Next.js Dashboard ◀──GET Poll───  Data
-                                (:3000)          (2s interval)
+                     ┌─────────── LAYER 1: AI SCREENING ────────────┐
+ESP32 / browser mic  │ WAV → 8 kHz → STFT → log-Mel → detectors →   │
+   ──── audio ────▶  │ label + confidence + triage + evidence       │
+                     └────────────────────┬────────────────────────┘
+                                          │ AWAITING CONFIRMATION
+                                          ▼
+                     ┌─────────── LAYER 2: PHYSICIAN REVIEW ────────┐
+                     │ Doctor sees spectrogram, flagged segments,   │
+                     │ raw audio → CONFIRM · MODIFY · REJECT        │
+                     │ Corrections → db.feedback[] (retraining set) │
+                     └────────────────────┬────────────────────────┘
+                                          ▼
+                              Triage queue, urgent first
 ```
+
+The role gate is enforced **server-side**: the review endpoint returns 403 for
+any non-doctor account. Hiding the buttons in the UI is a convenience, not the
+security boundary.
+
+**What the AI actually does** — real DSP, no simulated values: wheeze detection
+by tonal-peak tracking (CORSA: 100–1000 Hz, ≥ 80 ms), crackle detection by
+spectral-flux onsets at 4 ms resolution, cardiac rhythm from S1/S2 interval
+variability, murmur from systolic mid-band energy. Confidence is capped by
+measured recording quality, and unreadable audio returns an error instead of a
+guess.
+
+> **Model status:** `wellsim-dsp-baseline-v0.1` is a deterministic DSP
+> classifier, **not** a trained CNN. It produces the exact log-Mel input tensor
+> a CNN will consume, and the classifier is a drop-in replacement point. No
+> accuracy figures should be quoted until Phase 2 validation against a labelled
+> clinical corpus. See [`docs/AI_PIPELINE.md`](docs/AI_PIPELINE.md).
 
 ## 🚀 Quick Start
 
@@ -67,12 +96,50 @@ The dashboard will update automatically within 2 seconds.
 
 ## 📡 API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/device/data` | Receive sensor data from ESP32 |
-| `GET` | `/api/device/latest` | Get the latest sensor reading |
-| `GET` | `/api/device/status` | Check device connection status |
-| `GET` | `/api/health` | API health check |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/device/data` | — | Receive telemetry from ESP32 |
+| `POST` | `/api/device/audio` | — | Receive a recording **and screen it automatically** |
+| `GET` | `/api/device/latest` | any | Latest sensor reading |
+| `GET` | `/api/device/status` | any | Device connection status |
+| `POST` | `/api/analysis/run` | any | Layer 1 — screen a stored recording |
+| `GET` | `/api/analysis/:patientId` | any | Analyses + review state |
+| `POST` | `/api/analysis/:patientId/:type/review` | **doctor** | Layer 2 — confirm / modify / reject |
+| `GET` | `/api/analysis/stats/agreement` | any | Live AI-vs-physician agreement |
+| `GET` | `/api/analysis/feedback/export` | **doctor** | Retraining corpus (`?format=csv`) |
+| `GET` | `/api/health` | — | API health check |
+
+### Layer 2 — physician review
+
+```bash
+# Confirm the AI result
+curl -X POST http://localhost:3001/api/analysis/p1/lung/review \
+  -H "Authorization: Bearer $DOCTOR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"confirm","note":"Agree — expiratory wheeze audible."}'
+
+# Override it (logged for retraining)
+curl -X POST http://localhost:3001/api/analysis/p1/lung/review \
+  -H "Authorization: Bearer $DOCTOR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"modify","finalLabel":"coarse_crackles","finalTriage":"yellow",
+       "note":"Secretions, not bronchospasm."}'
+```
+
+A nurse token gets `403` with an explanation. Rejecting a result **requires** a
+written reason — that reason is what the model learns from.
+
+### Running the validation suite
+
+```bash
+cd backend && node test/validate.js
+```
+
+47 assertions over synthetic signals with known ground truth: normal breathing
+raises no false alarm, a 400 Hz wheeze is found within ±80 Hz, crackles are
+counted and characterised, rhythm irregularity and murmurs are separated,
+silent/short/non-WAV inputs are refused rather than guessed at, and the same
+input always produces the same output.
 
 ### POST `/api/device/data`
 
@@ -117,18 +184,22 @@ Returns `online` if data was received within the last 30 seconds, otherwise `off
 WellSim/
 ├── backend/
 │   ├── server.js                    # Express entry point
-│   ├── config/
-│   │   └── index.js                 # Centralized configuration
+│   ├── config/index.js              # Centralized configuration
+│   ├── test/validate.js             # DSP validation suite (47 assertions)
 │   └── src/
 │       ├── routes/
-│       │   └── device.js            # REST API endpoints
+│       │   ├── device.js            # ESP32 telemetry + audio upload
+│       │   ├── analysis.js          # AI screening & physician review
+│       │   ├── auth.js              # Login / register / session
+│       │   └── patients.js          # Patient CRUD
 │       ├── services/
-│       │   └── deviceService.js     # Business logic & data store
-│       ├── middleware/
-│       │   └── validation.js        # JSON payload validation
-│       └── placeholders/
-│           ├── aiAnalysis.js        # Future AI integration stub
-│           └── database.js          # Future DB integration stub
+│       │   ├── dsp.js               # FFT, STFT, Mel filterbank, WAV decode
+│       │   ├── audioAnalysis.js     # Detectors, classifier, triage fusion
+│       │   ├── dbService.js         # Storage, reviews, feedback log
+│       │   └── deviceService.js     # Telemetry store
+│       └── middleware/
+│           ├── auth.js              # Token auth + requireRole gate
+│           └── validation.js        # JSON payload validation
 │
 ├── frontend/
 │   ├── next.config.js               # API proxy rewrites
@@ -139,31 +210,43 @@ WellSim/
 │       │   ├── page.js              # Dashboard page
 │       │   └── globals.css          # Tailwind + custom styles
 │       ├── components/
+│       │   ├── AIAnalysisPanel.jsx  # AI verdict + physician review UI
+│       │   ├── SpectrogramView.jsx  # Log-Mel heatmap + anomaly overlay
+│       │   ├── PatientFormModal.jsx # Add / edit patient
 │       │   ├── Header.jsx           # App header with live clock
-│       │   ├── StatusIndicator.jsx  # Online/offline indicator
-│       │   ├── DeviceInfoCard.jsx   # Device ID & connection info
-│       │   ├── BatteryCard.jsx      # Battery gauge
-│       │   ├── TemperatureCard.jsx  # Temperature with range bar
-│       │   ├── AudioStatusCard.jsx  # Audio status & waveform
-│       │   ├── WifiSignalCard.jsx   # WiFi signal strength bars
-│       │   └── RawDataCard.jsx      # Raw JSON viewer
-│       ├── hooks/
-│       │   └── useDeviceData.js     # Real-time polling hook
-│       └── services/
-│           └── api.js               # API client
+│       │   └── …                    # Telemetry cards, toggles, guards
+│       ├── lib/
+│       │   └── audioEncoder.js      # Browser recording → PCM WAV
+│       ├── hooks/useDeviceData.js   # Real-time polling hook
+│       └── services/api.js          # API client
 │
+├── docs/
+│   └── AI_PIPELINE.md               # How the screening works & its limits
 └── README.md
 ```
 
-## 🔮 Future Modules (Placeholders Ready)
+## ✅ Implemented
 
-The architecture is designed for seamless expansion:
+- **AI screening** — wheeze, crackle, cardiac rhythm, murmur and cough
+  detection from real audio, with confidence, evidence, and time-stamped
+  anomaly segments (`src/services/audioAnalysis.js`, `src/services/dsp.js`)
+- **Explainability** — log-Mel spectrogram rendered in the dashboard with the
+  flagged segments drawn on top, over the real amplitude envelope
+- **Physician review** — confirm / modify / reject, role-gated at the API
+- **Feedback loop** — every correction stored as a `(spectrogram, expert label)`
+  pair, exportable as CSV
+- **Triage queue** — sorted by urgency, unreviewed cases first
+- **Authentication** — token auth with nurse / doctor / patient roles
+- **Persistence** — JSON file store with schema migrations
 
-- **AI Analysis** — Respiratory sound classification, cardiovascular risk scoring
-- **Database** — PostgreSQL/TimescaleDB for persistent time-series storage
-- **Authentication** — User/provider login and role-based access
-- **Patient History** — Historical data tracking and trend analysis
-- **Alerts** — Real-time anomaly detection and notifications
+## 🔮 Still to do
+
+- **Train the CNN** — the log-Mel pipeline and the labelled corpus are in
+  place; the classifier is the drop-in replacement point
+- **Phase 2 validation** — sensitivity / specificity / AUC against the ICBHI
+  2017 database
+- **Database** — PostgreSQL/TimescaleDB in place of the JSON store
+- **Alerts** — push notification on a red triage result
 
 ## 🛠 ESP32 Integration
 
