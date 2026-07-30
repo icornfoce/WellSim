@@ -12,6 +12,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
+import { verifySession } from '../../services/api';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
 import { API_URL } from '../../services/api';
@@ -40,17 +41,22 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if already logged in
+  // Check if already logged in and token is still valid
   useEffect(() => {
     const token = localStorage.getItem('wellsim_token');
-    if (token) {
-      let role = null;
-      try {
-        role = JSON.parse(localStorage.getItem('wellsim_user') || 'null')?.role;
-      } catch { /* ignore */ }
-      window.location.href = role === 'patient' ? '/portal' : '/';
-    }
-  }, []);
+    if (!token) return;
+    // Verify token with backend
+    verifySession()
+      .then(() => {
+        const role = JSON.parse(localStorage.getItem('wellsim_user') || 'null')?.role;
+        router.replace(role === 'patient' ? '/portal' : '/');
+      })
+      .catch(() => {
+        // Invalid/expired token – clear storage
+        localStorage.removeItem('wellsim_token');
+        localStorage.removeItem('wellsim_user');
+      });
+  }, [router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -76,8 +82,8 @@ export default function LoginPage() {
       localStorage.setItem('wellsim_token', data.token);
       localStorage.setItem('wellsim_user', JSON.stringify(data.user));
 
-      // Redirect by role: patients go to their portal
-      window.location.href = data.user.role === 'patient' ? '/portal' : '/';
+      // Redirect by role using Next.js router
+      router.replace(data.user.role === 'patient' ? '/portal' : '/');
     } catch (err) {
       setError(t('login.netError'));
       setIsLoading(false);
