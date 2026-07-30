@@ -152,10 +152,11 @@
   }
 }
 
-/* ─── Print: always light, chrome hidden ──────────────────────────── */
+/* ─── Print: A4 medical report — always light, chrome hidden ──────── */
 @media print {
   html {
     color-scheme: light;
+    font-size: 11pt;
   }
 
   body {
@@ -169,5 +170,71 @@
 
   .print-hidden {
     display: none !important;
+  }
+
+  /* Force light-mode colors in print */
+  .dark * {
+    color: #15181B !important;
+    background-color: transparent !important;
+    border-color: #e5e5e5 !important;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 15mm 12mm;
+    size: A4 portrait;
+  }
+
+  /* Avoid breaking inside cards */
+  .card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #d0d0d0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Print letterhead */
+  .print-letterhead {
+    display: block !important;
+    text-align: center;
+    border-bottom: 2px solid #15181B;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+
+  .print-letterhead h1 {
+    font-size: 18pt;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .print-letterhead p {
+    font-size: 9pt;
+    color: #666;
+    margin: 2px 0 0;
+  }
+
+  /* Print footer with signature block */
+  .print-footer {
+    display: block !important;
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid #d0d0d0;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure vitals grid prints well */
+  .bg-surface {
+    background: #fafafa !important;
+  }
+
+  /* Hide interactive elements */
+  button, input, select, textarea, label[class*="btn"] {
+    display: none !important;
+  }
+
+  /* But show print content */
+  .print-show {
+    display: block !important;
   }
 }

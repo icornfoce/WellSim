@@ -50,17 +50,58 @@ router.get('/', requireAuth, (req, res) => {
 // Must be registered BEFORE /:id so "me" is not treated as an ID.
 router.get('/me', requireAuth, (req, res) => {
   try {
-    const patient = getPatientByUserId(req.user.userId);
-    if (!patient) {
-      return res.status(404).json({
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({
         success: false,
-        error: 'Patient record not found for this user.',
+        error: 'This endpoint is for patient accounts only.',
       });
+    }
+    let patient = getPatientByUserId(req.user.userId);
+    if (!patient) {
+      patient = createBarePatientRecord({ id: req.user.userId, name: req.user.name });
     }
     res.status(200).json({ success: true, patient });
   } catch (error) {
-    console.error('❌ Error fetching self record:', error.message);
+    console.error('❌ Error fetching own record:', error.message);
     res.status(500).json({ success: false, error: 'Internal server error.' });
+  }
+});
+
+// ─── PUT /api/patients/me ────────────────────────────────────────────
+// Allow a patient to edit or add their own demographic fields.
+router.put('/me', requireAuth, (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only patients can edit their own record.',
+      });
+    }
+    const updates = req.body || {};
+    const allowed = ['name', 'age', 'gender', 'weight', 'height'];
+    const filtered = {};
+    for (const key of allowed) {
+      if (key in updates && updates[key] !== undefined) {
+        if (key === 'age' || key === 'weight' || key === 'height') {
+          filtered[key] = updates[key] === '' || updates[key] === null ? null : Number(updates[key]);
+        } else {
+          filtered[key] = updates[key];
+        }
+      }
+    }
+    let patient = getPatientByUserId(req.user.userId);
+    if (!patient) {
+      patient = createBarePatientRecord({ id: req.user.userId, name: req.user.name });
+    }
+    const updated = updatePatient(patient.id, filtered);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Patient record not found.' });
+    }
+    console.log(`✏️ Patient self-updated demographic info: ${updated.id} (${updated.name}) by ${req.user.name}`);
+    res.status(200).json({ success: true, patient: updated });
+  } catch (error) {
+    console.error('❌ Error patient self-update:', error.message);
+    res.status(500).json({ success: false, error: 'Internal server error while updating patient.' });
   }
 });
 

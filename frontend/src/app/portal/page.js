@@ -10,12 +10,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, RefreshCw } from 'lucide-react';
+import { LogOut, RefreshCw, Pencil, Check, Upload, Printer } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
 import { dataDictionaryTH } from '../../i18n/translations';
-import { fetchMyRecord, updateMyRecord } from '../../services/api';
+import { fetchMyRecord, updateMyRecord, uploadAudio as apiUploadAudio } from '../../services/api';
+import { encodeWavFromBlob, formatDuration } from '../../lib/audioEncoder';
 
 function PulseMark({ className = 'w-4 h-4' }) {
   return (
@@ -78,6 +79,89 @@ export default function PortalPage() {
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Demographic edit state
+  const [isEditingDemo, setIsEditingDemo] = useState(false);
+  const [demoForm, setDemoForm] = useState({
+    name: '',
+    age: '',
+    gender: 'Unspecified',
+    weight: '',
+    height: '',
+  });
+  const [savingDemo, setSavingDemo] = useState(false);
+  const [demoErr, setDemoErr] = useState('');
+
+  const startEditDemo = () => {
+    if (!record) return;
+    setDemoForm({
+      name: record.name || '',
+      age: record.age ?? '',
+      gender: record.gender || 'Unspecified',
+      weight: record.weight ?? '',
+      height: record.height ?? '',
+    });
+    setDemoErr('');
+    setIsEditingDemo(true);
+  };
+
+  const cancelEditDemo = () => {
+    setIsEditingDemo(false);
+    setDemoErr('');
+  };
+
+  const handleSaveDemo = async (e) => {
+    e.preventDefault();
+    if (!demoForm.name.trim()) {
+      setDemoErr(lang === 'th' ? 'กรุณาระบุชื่อ-นามสกุล' : 'Name is required.');
+      return;
+    }
+    setSavingDemo(true);
+    setDemoErr('');
+    try {
+      const res = await updateMyRecord(demoForm);
+      if (res.patient) {
+        setRecord((prev) => ({ ...prev, ...res.patient }));
+      }
+      setIsEditingDemo(false);
+    } catch (err) {
+      setDemoErr(err.message || (lang === 'th' ? 'บันทึกข้อมูลไม่สำเร็จ' : 'Failed to update demographics.'));
+    } finally {
+      setSavingDemo(false);
+    }
+  };
+
+  // Patient audio upload
+  const [uploadingType, setUploadingType] = useState(null);
+  const [uploadMsg, setUploadMsg] = useState('');
+
+  const handleAudioUpload = async (type, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !record) return;
+
+    setUploadingType(type);
+    setUploadMsg(lang === 'th' ? 'กำลังแปลงและอัปโหลดไฟล์เสียง…' : 'Converting and uploading audio…');
+
+    try {
+      const wav = await encodeWavFromBlob(file);
+      await apiUploadAudio({
+        patientId: record.id,
+        type,
+        audioBase64: wav.base64,
+        duration: formatDuration(wav.durationSec),
+        deviceId: 'PATIENT-PORTAL',
+      });
+
+      setUploadMsg(lang === 'th' ? 'อัปโหลดเสียงเรียบร้อยแล้ว!' : 'Upload successful! AI screening updated.');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Failed to upload audio.');
+    } finally {
+      setUploadingType(null);
+      setTimeout(() => setUploadMsg(''), 4000);
+    }
+  };
 
   // Guard: patients only
   useEffect(() => {
@@ -213,6 +297,16 @@ export default function PortalPage() {
           <div className="flex items-center gap-3">
             <LangToggle />
             <ThemeToggle />
+            <button
+              onClick={() => window.print()}
+              title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
+              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                         text-muted hover:text-ink hover:border-ink/50
+                         dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
+                         transition-colors duration-200"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </button>
             <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
             <p className="text-xs font-semibold text-ink dark:text-chalk hidden sm:block">{user?.name}</p>
             <button
@@ -230,6 +324,12 @@ export default function PortalPage() {
       </header>
 
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
+
+        {/* Print-only letterhead */}
+        <div className="hidden print-letterhead">
+          <h1>WellSim — Patient Health Summary</h1>
+          <p>AI-Assisted Respiratory &amp; Cardiovascular Screening · Printed {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
 
         {error && (
           <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in flex items-center justify-between gap-3">
@@ -253,29 +353,145 @@ export default function PortalPage() {
                     {record.name}
                   </h1>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="microlabel">{t('portal.checkin')}</p>
-                  <p className="font-mono text-xs text-ink dark:text-chalk mt-0.5 tabular-nums">{record.checkInTime || '—'}</p>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right">
+                    <p className="microlabel">{t('portal.checkin')}</p>
+                    <p className="font-mono text-xs text-ink dark:text-chalk mt-0.5 tabular-nums">{record.checkInTime || '—'}</p>
+                  </div>
+                  {!isEditingDemo && (
+                    <button
+                      onClick={startEditDemo}
+                      className="btn-line !py-1 !px-2.5 flex items-center gap-1.5 text-xs ml-1"
+                      title={lang === 'th' ? 'แก้ไขข้อมูลส่วนตัว' : 'Edit profile'}
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>{t('common.edit')}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
-                {[
-                  { label: t('demo.age'), value: record.age ?? '—', unit: record.age != null ? t('demo.yrs') : '' },
-                  { label: t('demo.gender'), value: genderDisplay(record.gender), unit: '' },
-                  { label: t('demo.weight'), value: record.weight ?? '—', unit: record.weight != null ? 'kg' : '' },
-                  { label: t('demo.height'), value: record.height ?? '—', unit: record.height != null ? 'cm' : '' },
-                  { label: 'BMI', value: bmiValue, unit: '' },
-                ].map(({ label, value, unit }) => (
-                  <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
-                    <p className="microlabel">{label}</p>
-                    <p className="text-[15px] font-medium text-ink dark:text-chalk mt-1 tabular-nums">
-                      {value}
-                      {unit && <span className="font-mono text-[10px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
-                    </p>
+              {isEditingDemo ? (
+                <form onSubmit={handleSaveDemo} className="mt-5 pt-4 border-t border-hairline dark:border-coal-700 animate-fade-in flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-ink dark:text-chalk">
+                      {lang === 'th' ? 'แก้ไขข้อมูลส่วนตัว' : 'Edit Personal Details'}
+                    </h3>
+                    <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                      {lang === 'th' ? '(แก้ไขข้อมูลทั่วไปของผู้ป่วย)' : '(Demographics only)'}
+                    </span>
                   </div>
-                ))}
-              </div>
+
+                  {demoErr && (
+                    <p className="text-xs text-risk-high dark:text-risk-highd bg-risk-high/10 p-2 rounded">{demoErr}</p>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="microlabel block mb-1">{t('modal.fullName')}</label>
+                      <input
+                        type="text"
+                        value={demoForm.name}
+                        onChange={(e) => setDemoForm({ ...demoForm, name: e.target.value })}
+                        className="field w-full text-xs"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="microlabel block mb-1">{t('modal.gender')}</label>
+                      <select
+                        value={demoForm.gender}
+                        onChange={(e) => setDemoForm({ ...demoForm, gender: e.target.value })}
+                        className="field w-full text-xs"
+                      >
+                        <option value="Male">{t('gender.male')}</option>
+                        <option value="Female">{t('gender.female')}</option>
+                        <option value="Other">{t('gender.other')}</option>
+                        <option value="Unspecified">{t('gender.unspecified')}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="microlabel block mb-1">{t('modal.age')}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="120"
+                        value={demoForm.age}
+                        onChange={(e) => setDemoForm({ ...demoForm, age: e.target.value })}
+                        placeholder="yrs"
+                        className="field w-full text-xs"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="microlabel block mb-1">{t('modal.weightKg')}</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={demoForm.weight}
+                          onChange={(e) => setDemoForm({ ...demoForm, weight: e.target.value })}
+                          placeholder="kg"
+                          className="field w-full text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="microlabel block mb-1">{t('modal.heightCm')}</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={demoForm.height}
+                          onChange={(e) => setDemoForm({ ...demoForm, height: e.target.value })}
+                          placeholder="cm"
+                          className="field w-full text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={cancelEditDemo}
+                      disabled={savingDemo}
+                      className="btn-line !py-1.5 !px-3 text-xs"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingDemo}
+                      className="btn-ink !py-1.5 !px-4 text-xs flex items-center gap-1.5"
+                    >
+                      {savingDemo ? t('modal.saving') : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{t('common.save')}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
+                  {[
+                    { label: t('demo.age'), value: record.age ?? '—', unit: record.age != null ? t('demo.yrs') : '' },
+                    { label: t('demo.gender'), value: genderDisplay(record.gender), unit: '' },
+                    { label: t('demo.weight'), value: record.weight ?? '—', unit: record.weight != null ? 'kg' : '' },
+                    { label: t('demo.height'), value: record.height ?? '—', unit: record.height != null ? 'cm' : '' },
+                    { label: 'BMI', value: bmiValue, unit: '' },
+                  ].map(({ label, value, unit }) => (
+                    <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
+                      <p className="microlabel">{label}</p>
+                      <p className="text-[15px] font-medium text-ink dark:text-chalk mt-1 tabular-nums">
+                        {value}
+                        {unit && <span className="font-mono text-[10px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Vitals */}
@@ -378,32 +594,82 @@ export default function PortalPage() {
               </div>
             </div>
 
-            {/* Recordings — say plainly when there are none */}
+            {/* Recordings — upload or show status */}
             <div className="card p-5 will-fade-up animate-delay-300">
               <SectionHead index="03" title={t('audio.title')} />
+
+              {uploadMsg && (
+                <div className="mt-3 px-3 py-2 rounded border border-med-500/30 bg-med-500/[0.06] text-xs text-med-600 dark:text-med-300 animate-fade-in">
+                  {uploadMsg}
+                </div>
+              )}
+
               <div className="mt-4 divide-y divide-hairline dark:divide-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden">
                 {audioRows.map((row) => (
                   <div key={row.key} className="flex items-center justify-between px-4 py-3 bg-surface dark:bg-coal-900">
-                    <p className="text-xs font-medium text-ink dark:text-chalk capitalize">{row.label}</p>
-                    {row.available ? (
-                      <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
-                        {t('audio.recorded')} · {row.duration}
-                      </p>
-                    ) : (
-                      <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                        {t('audio.notRecorded')}
-                      </p>
-                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-xs font-medium text-ink dark:text-chalk capitalize">{row.label}</p>
+                      {row.available ? (
+                        <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                          {t('audio.recorded')} · {row.duration}
+                        </p>
+                      ) : (
+                        <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                          {t('audio.notRecorded')}
+                        </p>
+                      )}
+                    </div>
+                    <label className={`btn-line !py-1 !px-2.5 text-[11px] flex items-center gap-1.5 cursor-pointer ${
+                      uploadingType === row.key ? 'opacity-50 pointer-events-none' : ''
+                    }`}>
+                      <Upload className="w-3 h-3" />
+                      <span>{uploadingType === row.key
+                        ? (lang === 'th' ? 'กำลังอัปโหลด…' : 'Uploading…')
+                        : (row.available
+                          ? (lang === 'th' ? 'อัปโหลดใหม่' : 'Re-upload')
+                          : (lang === 'th' ? 'อัปโหลดเสียง' : 'Upload'))
+                      }</span>
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        disabled={uploadingType === row.key}
+                        onChange={(e) => handleAudioUpload(row.key, e)}
+                      />
+                    </label>
                   </div>
                 ))}
               </div>
             </div>
 
-            <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2">
+            <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
               {t('colophon')}
             </p>
           </>
         )}
+
+        {/* Print-only signature block */}
+        <div className="hidden print-footer" style={{ display: 'none' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginTop: '24px' }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Reviewed by:</p>
+              <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
+                <p style={{ fontSize: '9pt' }}>Physician name &amp; signature</p>
+                <p style={{ fontSize: '8pt', color: '#999' }}>Date: _____ / _____ / _____</p>
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Nurse/Staff:</p>
+              <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
+                <p style={{ fontSize: '9pt' }}>Name &amp; signature</p>
+                <p style={{ fontSize: '8pt', color: '#999' }}>Station: _____________</p>
+              </div>
+            </div>
+          </div>
+          <p style={{ fontSize: '7pt', color: '#aaa', textAlign: 'center', marginTop: '16px' }}>
+            WellSim Clinical Triage System — AI screening results require physician verification before clinical action.
+          </p>
+        </div>
       </main>
     </div>
   );

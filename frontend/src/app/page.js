@@ -38,6 +38,8 @@ import PatientFormModal from '../components/PatientFormModal';
 import ThemeToggle from '../components/ThemeToggle';
 import LangToggle from '../components/LangToggle';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
+import CriticalAlertBanner from '../components/CriticalAlertBanner';
+import VitalsTrendChart from '../components/VitalsTrendChart';
 import { useLang } from '../i18n/LanguageContext';
 import { dataDictionaryTH } from '../i18n/translations';
 import {
@@ -1063,6 +1065,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
+      <CriticalAlertBanner patients={patients} onSelectPatient={setSelectedPatientId} />
 
       {/* ─── 1. TOP BAR ──────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
@@ -1099,6 +1102,16 @@ function Dashboard() {
           <div className="flex items-center gap-3">
             <LangToggle />
             <ThemeToggle />
+            <button
+              onClick={() => window.print()}
+              title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
+              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                         text-muted hover:text-ink hover:border-ink/50
+                         dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
+                         transition-colors duration-200"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </button>
             <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
             <div className="text-right hidden sm:block leading-tight">
               <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
@@ -1122,6 +1135,13 @@ function Dashboard() {
 
       {/* ─── MAIN ────────────────────────────────────────────────────── */}
       <main className="relative flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Print-only letterhead */}
+        <div className="hidden print-letterhead lg:col-span-3">
+          <h1>WellSim — Clinical Triage Report</h1>
+          <p>AI-Assisted Respiratory &amp; Cardiovascular Screening · Printed {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+
         {/* Registration marks — a quiet nod to print production */}
         <span className="hidden lg:block absolute top-1 right-2 font-mono text-[11px] text-hairline-strong dark:text-coal-600 select-none print-hidden" aria-hidden="true">+</span>
         <span className="hidden lg:block absolute bottom-1 left-2 font-mono text-[11px] text-hairline-strong dark:text-coal-600 select-none print-hidden" aria-hidden="true">+</span>
@@ -1472,6 +1492,7 @@ function Dashboard() {
                 <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">{t('vitals.reservedNote')}</p>
               </div>
 
+              <VitalsTrendChart patient={patient} />
             </div>
           </div>
 
@@ -1730,6 +1751,29 @@ function Dashboard() {
             {t('colophon')}
           </p>
         </section>
+
+        {/* Print-only signature block */}
+        <div className="hidden print-footer lg:col-span-3" style={{ display: 'none' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginTop: '24px' }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Reviewed by:</p>
+              <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
+                <p style={{ fontSize: '9pt' }}>Physician name &amp; signature</p>
+                <p style={{ fontSize: '8pt', color: '#999' }}>Date: _____ / _____ / _____</p>
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Nurse/Staff:</p>
+              <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
+                <p style={{ fontSize: '9pt' }}>Name &amp; signature</p>
+                <p style={{ fontSize: '8pt', color: '#999' }}>Station: _____________</p>
+              </div>
+            </div>
+          </div>
+          <p style={{ fontSize: '7pt', color: '#aaa', textAlign: 'center', marginTop: '16px' }}>
+            WellSim Clinical Triage System — AI screening results require physician verification before clinical action.
+          </p>
+        </div>
       </main>
 
       {/* Add / Edit Patient Modal */}
