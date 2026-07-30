@@ -232,14 +232,13 @@ export default function PortalPage() {
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
 
         {error && (
-          { error && (
-            <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in flex items-center justify-between gap-3">
-              <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
-              <button onClick={load} className="btn-line !py-1 shrink-0">
-                <RefreshCw className="w-3 h-3" /> {t('portal.refresh')}
-              </button>
-            </div>
-          )}
+          <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in flex items-center justify-between gap-3">
+            <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
+            <button onClick={load} className="btn-line !py-1 shrink-0">
+              <RefreshCw className="w-3 h-3" /> {t('portal.refresh')}
+            </button>
+          </div>
+        )}
 
         {record && (
           <>
