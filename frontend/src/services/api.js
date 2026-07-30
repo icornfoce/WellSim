@@ -28,7 +28,7 @@ const AUTH_BASE = `${API_URL}/api/auth`;
 const PATIENTS_BASE = `${API_URL}/api/patients`;
 const ANALYSIS_BASE = `${API_URL}/api/analysis`;
 
-// ─── Helper: Get auth headers ────────────────────────────────────────
+// ─── Helper: Get auth headers & handle auth errors ────────────────────
 
 function getAuthHeaders() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('wellsim_token') : null;
@@ -37,6 +37,16 @@ function getAuthHeaders() {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+}
+
+function checkAuthError(response, data) {
+  if (response.status === 401 && typeof window !== 'undefined') {
+    localStorage.removeItem('wellsim_token');
+    localStorage.removeItem('wellsim_user');
+    if (window.location.pathname !== '/login') {
+      window.location.replace('/login');
+    }
+  }
 }
 
 // ─── Authentication API ──────────────────────────────────────────────
@@ -74,10 +84,12 @@ export async function verifySession() {
     cache: 'no-store',
   });
 
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error('Session invalid');
+    checkAuthError(response, data);
+    throw new Error(data.error || 'Session invalid');
   }
-  return response.json();
+  return data;
 }
 
 // ─── Patient API ─────────────────────────────────────────────────────
@@ -97,6 +109,7 @@ export async function fetchPatients() {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    checkAuthError(response, errorData);
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -119,6 +132,7 @@ export async function updatePatientVitals(patientId, vitals) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    checkAuthError(response, errorData);
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -139,6 +153,7 @@ export async function createPatient(patient) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    checkAuthError(response, errorData);
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -161,6 +176,7 @@ export async function updatePatient(patientId, updates) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    checkAuthError(response, errorData);
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -180,6 +196,7 @@ export async function deletePatient(patientId) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    checkAuthError(response, errorData);
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -327,6 +344,7 @@ export async function deleteAudio(patientId, type) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
+    checkAuthError(response, data);
     throw new Error(data.error || `Delete failed (HTTP ${response.status})`);
   }
   return data;
@@ -338,6 +356,7 @@ export async function deleteAudio(patientId, type) {
 async function unwrap(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
+    checkAuthError(response, data);
     const err = new Error(data.error || `HTTP ${response.status}`);
     err.status = response.status;
     err.requiredRoles = data.requiredRoles;
@@ -423,6 +442,26 @@ export async function fetchMyRecord() {
 
   if (!response.ok || !data.success) {
     throw new Error(data.error || 'Failed to fetch your record.');
+  }
+
+  return data;
+}
+
+/**
+ * Update the logged-in patient's own demographic record.
+ * Accepts partial updates for allowed fields.
+ */
+export async function updateMyRecord(updates) {
+  const response = await fetch(`${PATIENTS_BASE}/me`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(updates),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Failed to update your record.');
   }
 
   return data;

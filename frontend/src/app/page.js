@@ -949,8 +949,59 @@ function Dashboard() {
   // Empty state — no patients in the queue (e.g. after deleting them all)
   if (!patient) {
     return (
-      <>
-        <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center p-4 transition-colors duration-300">
+      <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
+        <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
+          <div className="max-w-7xl mx-auto flex items-center justify-between h-14 gap-4">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
+                <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
+              </div>
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</span>
+                <span className="microlabel hidden sm:inline">Triage / v2</span>
+              </div>
+            </div>
+
+            <div className="hidden md:flex items-center gap-6 font-mono text-[11px] text-muted dark:text-chalk-muted">
+              <span className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-[1px] ${
+                  deviceStatus?.status === 'online'
+                    ? 'bg-med-500 dark:bg-med-300 animate-blink'
+                    : 'bg-risk-high dark:bg-risk-highd'
+                }`} />
+                {deviceStatus?.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
+              </span>
+              <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
+              <span className="tabular-nums text-ink dark:text-chalk">
+                {currentTime.toLocaleTimeString('en-US', { hour12: false })}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <LangToggle />
+              <ThemeToggle />
+              <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
+              <div className="text-right hidden sm:block leading-tight">
+                <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
+                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
+                  {['nurse', 'doctor', 'patient'].includes(user?.role) ? t('role.' + user.role) : t('role.unknown')} · {user?.station || '—'}
+                </p>
+              </div>
+              <button
+                onClick={onLogout}
+                title={t('header.signOut')}
+                className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                           text-muted hover:text-risk-high hover:border-risk-high/50
+                           dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
+                           transition-colors duration-200"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center max-w-sm animate-fade-up">
             <p className="microlabel">{t('empty.label')}</p>
             <h2 className="text-2xl font-light text-ink dark:text-chalk mt-2">{t('empty.title')}</h2>
@@ -962,6 +1013,7 @@ function Dashboard() {
             </button>
           </div>
         </div>
+
         <PatientFormModal
           open={modalOpen}
           mode={modalMode}
@@ -970,7 +1022,7 @@ function Dashboard() {
           onSubmit={handleModalSubmit}
           submitting={modalSubmitting}
         />
-      </>
+      </div>
     );
   }
 

@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLang } from '../i18n/LanguageContext';
+import { verifySession } from '../services/api';
 
 export default function RouteGuard({ children }) {
   const router = useRouter();
@@ -28,18 +29,26 @@ export default function RouteGuard({ children }) {
       return;
     }
 
-    try {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-      setIsAuthenticated(true);
-      setIsChecking(false);
-    } catch {
-      // Invalid user data — force re-login
-      localStorage.removeItem('wellsim_token');
-      localStorage.removeItem('wellsim_user');
-      setIsChecking(false);
-      router.replace('/login');
-    }
+    verifySession()
+      .then((data) => {
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem('wellsim_user', JSON.stringify(data.user));
+        } else {
+          try {
+            setUser(JSON.parse(userStr));
+          } catch (e) {}
+        }
+        setIsAuthenticated(true);
+        setIsChecking(false);
+      })
+      .catch((err) => {
+        console.error('Session verification error:', err);
+        localStorage.removeItem('wellsim_token');
+        localStorage.removeItem('wellsim_user');
+        setIsChecking(false);
+        router.replace('/login');
+      });
   }, [router]);
 
   const handleLogout = () => {

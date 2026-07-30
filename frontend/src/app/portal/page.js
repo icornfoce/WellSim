@@ -15,7 +15,7 @@ import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
 import { dataDictionaryTH } from '../../i18n/translations';
-import { fetchMyRecord } from '../../services/api';
+import { fetchMyRecord, updateMyRecord } from '../../services/api';
 
 function PulseMark({ className = 'w-4 h-4' }) {
   return (
@@ -222,6 +222,7 @@ export default function PortalPage() {
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
 
         {error && (
+      {error && (
           <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in flex items-center justify-between gap-3">
             <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
             <button onClick={load} className="btn-line !py-1 shrink-0">
