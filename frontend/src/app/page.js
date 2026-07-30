@@ -13,6 +13,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Play,
   Pause,
@@ -140,6 +141,7 @@ function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
 }
 
 function Dashboard() {
+  const router = useRouter();
   const { deviceStatus } = useDeviceData();
   const { t, lang } = useLang();
   // Translate known demo/backend data strings when viewing in Thai
@@ -147,7 +149,7 @@ function Dashboard() {
   const [user, setUser] = useState(null);
   const [patients, setPatients] = useState([]);
   const [patientsLoaded, setPatientsLoaded] = useState(false);
-  const [selectedPatientId, setSelectedPatientId] = useState('p1');
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [activeAudioTab, setActiveAudioTab] = useState('lung'); // lung, heart, cough
   const [isPlaying, setIsPlaying] = useState(false);
   const [playProgress, setPlayProgress] = useState(0);
@@ -199,8 +201,8 @@ function Dashboard() {
           return { ...p, audioLogs: logs };
         });
         setPatients(patientsWithAudio);
-        if (!selectedPatientId && patientsWithAudio.length > 0) {
-          setSelectedPatientId(patientsWithAudio[0].id);
+        if (patientsWithAudio.length > 0) {
+          setSelectedPatientId((prev) => prev ?? patientsWithAudio[0].id);
         }
       }
     } catch (err) {
@@ -208,7 +210,7 @@ function Dashboard() {
     } finally {
       setPatientsLoaded(true);
     }
-  }, [selectedPatientId]);
+  }, []);
 
   useEffect(() => {
     loadPatients();
@@ -296,7 +298,7 @@ function Dashboard() {
   const onLogout = () => {
     localStorage.removeItem('wellsim_token');
     localStorage.removeItem('wellsim_user');
-    window.location.href = '/login';
+    router.replace('/login');
   };
 
   // Auto update system time

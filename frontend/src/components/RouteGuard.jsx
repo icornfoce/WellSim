@@ -23,7 +23,8 @@ export default function RouteGuard({ children }) {
     const userStr = localStorage.getItem('wellsim_user');
 
     if (!token || !userStr) {
-      window.location.href = '/login';
+      setIsChecking(false);
+      router.replace('/login');
       return;
     }
 
@@ -31,20 +32,20 @@ export default function RouteGuard({ children }) {
       const userData = JSON.parse(userStr);
       setUser(userData);
       setIsAuthenticated(true);
+      setIsChecking(false);
     } catch {
       // Invalid user data — force re-login
       localStorage.removeItem('wellsim_token');
       localStorage.removeItem('wellsim_user');
-      window.location.href = '/login';
+      setIsChecking(false);
+      router.replace('/login');
     }
-
-    setIsChecking(false);
   }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('wellsim_token');
     localStorage.removeItem('wellsim_user');
-    router.push('/login');
+    router.replace('/login');
   };
 
   // Quiet instrument-style loader: mark, sweep line, mono caption

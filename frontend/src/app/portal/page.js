@@ -9,6 +9,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { LogOut, RefreshCw } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
@@ -70,6 +71,7 @@ function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
 }
 
 export default function PortalPage() {
+  const router = useRouter();
   const { t, lang } = useLang();
   const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
@@ -82,20 +84,20 @@ export default function PortalPage() {
     const token = localStorage.getItem('wellsim_token');
     const userStr = localStorage.getItem('wellsim_user');
     if (!token || !userStr) {
-      window.location.replace('/login');
+      router.replace('/login');
       return;
     }
     try {
       const parsed = JSON.parse(userStr);
       if (parsed?.role !== 'patient') {
-        window.location.replace('/');
+        router.replace('/');
         return;
       }
       setUser(parsed);
     } catch {
-      window.location.replace('/login');
+      router.replace('/login');
     }
-  }, []);
+  }, [router]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +119,7 @@ export default function PortalPage() {
   const onLogout = () => {
     localStorage.removeItem('wellsim_token');
     localStorage.removeItem('wellsim_user');
-    window.location.href = '/login';
+    router.replace('/login');
   };
 
   const has = (x) => x !== null && x !== undefined;
