@@ -124,6 +124,8 @@ app.listen(config.PORT, () => {
   console.log('║                                                      ║');
   console.log('║  Endpoints:                                          ║');
   console.log('║  POST /api/device/data    — Receive ESP32 data       ║');
+  console.log('║  POST /api/device/audio   — Upload & auto-screen     ║');
+  console.log('║  DEL  /api/device/audio/:pid/:type — Delete audio    ║');
   console.log('║  GET  /api/device/latest  — Latest reading           ║');
   console.log('║  GET  /api/device/status  — Device status            ║');
   console.log('║  POST /api/auth/login     — User authentication      ║');

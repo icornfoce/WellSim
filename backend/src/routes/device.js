@@ -103,8 +103,17 @@ router.post('/audio', (req, res) => {
       });
     }
 
-    const audioType = type || 'lung'; // 'lung' | 'heart' | 'cough'
+    const audioType = ['lung', 'heart', 'cough'].includes(type) ? type : 'lung';
     const deviceId = device_id || 'unknown';
+
+    // Reject payloads that are not plausibly base64 audio before we
+    // allocate a buffer for them
+    if (typeof audio_base64 !== 'string' || audio_base64.length < 64) {
+      return res.status(400).json({
+        success: false,
+        error: 'audio_base64 must be a base64-encoded audio file.',
+      });
+    }
     
     // Auto-associate with selected patient (e.g. 'p1' if none provided)
     const targetPatientId = patient_id || 'p1';
@@ -182,6 +191,74 @@ router.post('/audio', (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Internal server error while processing audio data.',
+    });
+  }
+});
+
+// ─── DELETE /api/device/audio/:patientId/:type ───────────────────────
+// Remove a recording and everything derived from it.
+router.delete('/audio/:patientId/:type', requireAuth, (req, res) => {
+  try {
+    const { patientId, type } = req.params;
+
+    if (!['lung', 'heart', 'cough'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        error: 'type must be "lung", "heart", or "cough".',
+      });
+    }
+
+    const result = dbService.deletePatientAudio(patientId, type);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: `Patient "${patientId}" not found.`,
+      });
+    }
+    if (result.error === 'NO_AUDIO') {
+      return res.status(404).json({
+        success: false,
+        error: `No ${type} recording exists for this patient.`,
+      });
+    }
+
+    // Remove the file from storage, unless another record still points at it
+    let fileRemoved = false;
+    if (result.removedUrl && !result.stillReferenced) {
+      const uploadsDir = path.join(__dirname, '../../uploads');
+      // basename() blocks path traversal via a crafted stored URL
+      const filePath = path.join(uploadsDir, path.basename(result.removedUrl));
+      if (filePath.startsWith(uploadsDir) && fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          fileRemoved = true;
+        } catch (e) {
+          // The DB record is already gone; a leftover file is recoverable
+          console.error(`⚠️ Could not unlink ${filePath}:`, e.message);
+        }
+      }
+    }
+
+    console.log(
+      `🗑️  Audio deleted: ${type} for ${result.patient.name} by ${req.user.name}` +
+      `${result.hadReview ? ' (had a signed physician review)' : ''}`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.hadReview
+        ? 'Recording deleted. It carried a signed physician review, which has been removed with it.'
+        : 'Recording and its AI analysis deleted.',
+      fileRemoved,
+      hadReview: result.hadReview,
+      patient: result.patient,
+    });
+  } catch (error) {
+    console.error('❌ Error deleting audio:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while deleting the recording.',
     });
   }
 });

@@ -100,6 +100,7 @@ The dashboard will update automatically within 2 seconds.
 |--------|----------|------|-------------|
 | `POST` | `/api/device/data` | — | Receive telemetry from ESP32 |
 | `POST` | `/api/device/audio` | — | Receive a recording **and screen it automatically** |
+| `DELETE` | `/api/device/audio/:patientId/:type` | any | Delete a recording, its file, and its analysis |
 | `GET` | `/api/device/latest` | any | Latest sensor reading |
 | `GET` | `/api/device/status` | any | Device connection status |
 | `POST` | `/api/analysis/run` | any | Layer 1 — screen a stored recording |
@@ -225,8 +226,29 @@ WellSim/
 └── README.md
 ```
 
+## 🎙️ Three ways to get audio in
+
+| Source | How | Notes |
+|---|---|---|
+| **ESP32 device** | Dashboard sends a `record` command; the device posts back | Already WAV |
+| **Browser microphone** | 10 s capture from the laptop mic | Transcoded to WAV client-side |
+| **File upload** | Pick a file from the computer | WAV, MP3, M4A, OGG, FLAC, WebM |
+
+Uploaded files are decoded with the Web Audio API and re-encoded to **16 kHz
+mono PCM WAV** in the browser, so every path reaches the engine in the same
+format. Minimum 3 s, trimmed at 120 s. Screening runs automatically on arrival
+— no separate step.
+
+Deleting a recording removes the file from disk, the `audioLogs` entry, **and
+the AI analysis derived from it**: a verdict that outlives its audio cannot be
+checked by anyone. If a doctor had already signed that result, the confirmation
+dialog says so explicitly before you commit. Physician corrections already in
+`db.feedback[]` are kept — they are training data.
+
 ## ✅ Implemented
 
+- **Audio capture** — ESP32, browser microphone, or file upload; all three
+  normalised to 16 kHz mono WAV, with delete and replace
 - **AI screening** — wheeze, crackle, cardiac rhythm, murmur and cough
   detection from real audio, with confidence, evidence, and time-stamped
   anomaly segments (`src/services/audioAnalysis.js`, `src/services/dsp.js`)

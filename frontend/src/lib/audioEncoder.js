@@ -13,15 +13,38 @@
 
 const TARGET_SAMPLE_RATE = 16000;
 
+/** Longest recording we will send. 16 kHz mono ≈ 32 kB/s, so 120 s ≈ 3.8 MB. */
+export const MAX_DURATION_SEC = 120;
+
+/** Reject huge files before spending time decoding them. */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+/** Extensions the file picker advertises. Anything the browser decodes works. */
+export const ACCEPTED_AUDIO = '.wav,.mp3,.m4a,.aac,.ogg,.oga,.opus,.webm,.flac,audio/*';
+
 /**
- * Decode any browser-recorded audio blob and re-encode it as mono
- * 16-bit PCM WAV.
+ * Decode any audio blob — a MediaRecorder capture or a file the user
+ * picked — and re-encode it as mono 16-bit PCM WAV.
  *
- * @param {Blob} blob - Output of a MediaRecorder
- * @returns {Promise<{ blob: Blob, base64: string, durationSec: number, sampleRate: number }>}
- * @throws {Error} If the browser cannot decode its own recording
+ * Both capture paths converge here so the analysis engine always
+ * receives the same format, whatever the source was.
+ *
+ * @param {Blob|File} blob
+ * @param {Object} [options]
+ * @param {number} [options.maxDurationSec] - Trim anything longer
+ * @returns {Promise<{ blob, base64, durationSec, sampleRate, sourceSampleRate, sourceChannels, trimmed }>}
+ * @throws {Error} If the browser cannot decode the file
  */
-export async function encodeWavFromBlob(blob) {
+export async function encodeWavFromBlob(blob, options = {}) {
+  const maxDuration = options.maxDurationSec ?? MAX_DURATION_SEC;
+
+  if (blob.size > MAX_FILE_BYTES) {
+    throw new Error(
+      `File is ${(blob.size / 1024 / 1024).toFixed(1)} MB — the limit is ` +
+      `${MAX_FILE_BYTES / 1024 / 1024} MB.`
+    );
+  }
+
   const arrayBuffer = await blob.arrayBuffer();
 
   const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -31,6 +54,10 @@ export async function encodeWavFromBlob(blob) {
   let audioBuffer;
   try {
     audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+  } catch (e) {
+    throw new Error(
+      'This file could not be decoded as audio. Try WAV, MP3, M4A, OGG, or FLAC.'
+    );
   } finally {
     // Safari keeps contexts alive; close explicitly to free the hardware
     if (ctx.state !== 'closed') ctx.close().catch(() => {});
@@ -48,7 +75,20 @@ export async function encodeWavFromBlob(blob) {
   // Resample to the target rate (linear interpolation is sufficient —
   // the engine band-limits to 8 kHz internally anyway)
   const from = audioBuffer.sampleRate;
-  const resampled = from === TARGET_SAMPLE_RATE ? mono : resampleLinear(mono, from, TARGET_SAMPLE_RATE);
+  let resampled = from === TARGET_SAMPLE_RATE ? mono : resampleLinear(mono, from, TARGET_SAMPLE_RATE);
+
+  // Trim to the cap. Auscultation only needs a few breath cycles, and
+  // an unbounded upload would blow past the API's body-size limit.
+  const maxSamples = Math.floor(maxDuration * TARGET_SAMPLE_RATE);
+  const trimmed = resampled.length > maxSamples;
+  if (trimmed) resampled = resampled.subarray(0, maxSamples);
+
+  if (resampled.length < TARGET_SAMPLE_RATE * 3) {
+    throw new Error(
+      `Recording is only ${(resampled.length / TARGET_SAMPLE_RATE).toFixed(1)}s — ` +
+      `the engine needs at least 3 seconds to analyse.`
+    );
+  }
 
   const wavBuffer = encodeWav(resampled, TARGET_SAMPLE_RATE);
   const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
@@ -58,7 +98,17 @@ export async function encodeWavFromBlob(blob) {
     base64: arrayBufferToBase64(wavBuffer),
     durationSec: resampled.length / TARGET_SAMPLE_RATE,
     sampleRate: TARGET_SAMPLE_RATE,
+    sourceSampleRate: from,
+    sourceChannels: channels,
+    trimmed,
   };
+}
+
+/** Format seconds as m:ss for the duration label. */
+export function formatDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function resampleLinear(samples, fromRate, toRate) {

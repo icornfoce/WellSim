@@ -282,6 +282,56 @@ export async function register({ name, email, password, role, station }) {
   return data;
 }
 
+// ─── Audio API ───────────────────────────────────────────────────────
+
+/**
+ * Upload a recording. The backend screens it automatically on arrival,
+ * so the response already carries the AI result.
+ *
+ * @param {Object} payload - { patient_id, type, audio_base64, duration, device_id }
+ * @returns {Promise<Object>} { success, audioUrl, patient, analysis }
+ */
+export async function uploadAudio({ patientId, type, audioBase64, duration, deviceId = 'FILE-UPLOAD' }) {
+  const response = await fetch(`${DEVICE_BASE}/audio`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      device_id: deviceId,
+      patient_id: patientId,
+      type,
+      duration,
+      audio_base64: audioBase64,
+      mime_type: 'audio/wav',
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || `Upload failed (HTTP ${response.status})`);
+  }
+  return data;
+}
+
+/**
+ * Delete a recording, its stored file, and the analysis derived from it.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @returns {Promise<Object>} { success, fileRemoved, hadReview, patient }
+ */
+export async function deleteAudio(patientId, type) {
+  const response = await fetch(`${DEVICE_BASE}/audio/${patientId}/${type}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || `Delete failed (HTTP ${response.status})`);
+  }
+  return data;
+}
+
 // ─── AI Analysis & Physician Review API ──────────────────────────────
 
 /** Shared response unwrapper for the analysis endpoints. */

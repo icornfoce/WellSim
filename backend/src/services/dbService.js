@@ -638,6 +638,51 @@ function savePatientAudio(patientId, type, audioUrl, duration) {
   return patient;
 }
 
+/**
+ * Remove a patient's recording of one type.
+ *
+ * The stored analysis goes with it — an AI result that outlives the
+ * audio it was derived from cannot be checked by anyone, which defeats
+ * the point of the review layer. Any physician feedback already logged
+ * in db.feedback[] is deliberately kept: it is training data, and the
+ * spectrogram it refers to is reproducible from the record.
+ *
+ * @param {string} patientId
+ * @param {'lung'|'heart'|'cough'} type
+ * @returns {{ patient, removedUrl, hadReview }|{ error: string }|null}
+ */
+function deletePatientAudio(patientId, type) {
+  const db = readDB();
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return null;
+
+  const log = patient.audioLogs?.[type];
+  if (!log || !log.available) return { error: 'NO_AUDIO' };
+
+  const removedUrl = log.url || null;
+  const review = patient.analyses?.[type]?.review;
+  const hadReview = !!review && review.status !== 'pending';
+
+  patient.audioLogs[type] = {
+    available: false,
+    status: 'Not recorded',
+    duration: '0:00',
+  };
+  if (patient.analyses?.[type]) delete patient.analyses[type];
+
+  recomputePatientRisk(patient);
+
+  // Is the same file referenced by any other record? If so, keep it.
+  const stillReferenced = removedUrl
+    ? db.patients.some(p =>
+        ['lung', 'heart', 'cough'].some(k => p.audioLogs?.[k]?.url === removedUrl)
+      )
+    : false;
+
+  writeDB(db);
+  return { patient, removedUrl, hadReview, stillReferenced };
+}
+
 // ─── AI Analysis & Physician Review ──────────────────────────────────
 
 /**
@@ -905,6 +950,7 @@ module.exports = {
   calculateRisk,
   saveReading,
   savePatientAudio,
+  deletePatientAudio,
   savePatientAnalysis,
   saveAnalysisReview,
   recomputePatientRisk,

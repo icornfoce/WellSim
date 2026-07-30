@@ -99,6 +99,20 @@ export const translations = {
       noneDetail: 'THIS DIAGNOSTIC AUDIO WAS NOT CAPTURED',
       notRecorded: 'None',
       recorded: 'Recorded',
+      // Capture sources
+      useEsp32: 'Trigger ESP32 mic',
+      useBrowserMic: 'Use browser mic',
+      uploadFile: 'Upload audio file',
+      uploading: 'Uploading…',
+      uploadHint:
+        'WAV, MP3, M4A, OGG or FLAC · converted to 16 kHz mono WAV and screened automatically · 3 s minimum, 120 s maximum',
+      replace: 'Replace file',
+      delete: 'Delete recording',
+      deleting: 'Deleting…',
+      deleteNote: 'Deleting a recording also removes its AI analysis — the result cannot be checked without the audio it came from.',
+      confirmDelete: 'Delete this recording? Its AI analysis will be removed with it. This cannot be undone.',
+      confirmDeleteSigned:
+        'This recording carries a review signed by {doctor}. Deleting it removes the recording, its AI analysis, and that signed review. Continue?',
     },
     ai: {
       title: 'AI Screening & Physician Review',
@@ -364,6 +378,20 @@ export const translations = {
       noneDetail: 'ไม่ได้บันทึกเสียงวินิจฉัยรายการนี้',
       notRecorded: 'ไม่มี',
       recorded: 'บันทึกแล้ว',
+      // แหล่งที่มาของเสียง
+      useEsp32: 'สั่งอัดผ่าน ESP32',
+      useBrowserMic: 'ใช้ไมค์ของเครื่อง',
+      uploadFile: 'อัปโหลดไฟล์เสียง',
+      uploading: 'กำลังอัปโหลด…',
+      uploadHint:
+        'รองรับ WAV, MP3, M4A, OGG, FLAC · ระบบจะแปลงเป็น WAV 16 kHz โมโน และวิเคราะห์ให้อัตโนมัติ · อย่างน้อย 3 วินาที ไม่เกิน 120 วินาที',
+      replace: 'เปลี่ยนไฟล์',
+      delete: 'ลบไฟล์เสียง',
+      deleting: 'กำลังลบ…',
+      deleteNote: 'การลบไฟล์เสียงจะลบผลวิเคราะห์ของ AI ไปด้วย เพราะไม่มีเสียงต้นฉบับให้ตรวจสอบผลนั้นได้อีก',
+      confirmDelete: 'ต้องการลบไฟล์เสียงนี้หรือไม่ ผลวิเคราะห์ของ AI จะถูกลบไปด้วย และไม่สามารถกู้คืนได้',
+      confirmDeleteSigned:
+        'ไฟล์เสียงนี้มีการยืนยันผลโดย {doctor} แล้ว การลบจะลบทั้งไฟล์เสียง ผลวิเคราะห์ AI และผลการยืนยันของแพทย์ ต้องการดำเนินการต่อหรือไม่',
     },
     ai: {
       title: 'การคัดกรองด้วย AI และการประเมินโดยแพทย์',

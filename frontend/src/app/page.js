@@ -27,6 +27,9 @@ import {
   X,
   Clock,
   ShieldCheck,
+  Upload,
+  Mic,
+  Laptop,
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
@@ -36,7 +39,12 @@ import LangToggle from '../components/LangToggle';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
 import { useLang } from '../i18n/LanguageContext';
 import { dataDictionaryTH } from '../i18n/translations';
-import { encodeWavFromBlob } from '../lib/audioEncoder';
+import {
+  encodeWavFromBlob,
+  formatDuration,
+  ACCEPTED_AUDIO,
+  MAX_DURATION_SEC,
+} from '../lib/audioEncoder';
 import {
   API_URL,
   fetchPatients,
@@ -47,6 +55,8 @@ import {
   runAnalysis as apiRunAnalysis,
   fetchAnalyses as apiFetchAnalyses,
   submitReview as apiSubmitReview,
+  uploadAudio as apiUploadAudio,
+  deleteAudio as apiDeleteAudio,
 } from '../services/api';
 
 /** Queue ordering: urgent first, then anything a doctor has not signed. */
@@ -468,6 +478,110 @@ function Dashboard() {
   const [browserRecordTime, setBrowserRecordTime] = useState(0);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  // File upload / delete
+  const fileInputRef = useRef(null);
+  const [uploadState, setUploadState] = useState({ busy: false, message: '', error: '' });
+  const [deleting, setDeleting] = useState(false);
+
+  /**
+   * Upload an audio file from the user's computer.
+   *
+   * Anything the browser can decode is accepted and converted to the
+   * same 16 kHz mono WAV the ESP32 sends, so a file dropped in here
+   * reaches the analysis engine in exactly the same shape as a live
+   * capture. Screening then happens server-side on arrival.
+   */
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    // Reset immediately so re-picking the same file still fires onChange
+    event.target.value = '';
+    if (!file || !patient) return;
+
+    setUploadState({ busy: true, message: `Reading ${file.name}…`, error: '' });
+
+    try {
+      setUploadState({ busy: true, message: 'Converting to WAV…', error: '' });
+      const wav = await encodeWavFromBlob(file);
+
+      setUploadState({ busy: true, message: 'Uploading and screening…', error: '' });
+      const res = await apiUploadAudio({
+        patientId: patient.id,
+        type: activeAudioTab,
+        audioBase64: wav.base64,
+        duration: formatDuration(wav.durationSec),
+        deviceId: 'FILE-UPLOAD',
+      });
+
+      if (res.analysis) {
+        setAnalyses((prev) => ({ ...prev, [activeAudioTab]: res.analysis }));
+      }
+      await loadPatients();
+      await loadAnalyses(patient.id);
+
+      setUploadState({
+        busy: false,
+        error: '',
+        message: wav.trimmed
+          ? `Uploaded — trimmed to the first ${MAX_DURATION_SEC}s.`
+          : `Uploaded ${file.name} (${formatDuration(wav.durationSec)}).`,
+      });
+      setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 6000);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      setUploadState({ busy: false, message: '', error: err.message });
+    }
+  };
+
+  /** Delete the current recording, its file, and its AI analysis. */
+  const handleDeleteAudio = async () => {
+    if (!patient) return;
+
+    const signed = analyses?.[activeAudioTab]?.review;
+    const wasSigned = signed && signed.status !== 'pending';
+
+    const confirmText = wasSigned
+      ? t('audio.confirmDeleteSigned', { doctor: signed.doctorName || '—' })
+      : t('audio.confirmDelete');
+    if (!window.confirm(confirmText)) return;
+
+    setDeleting(true);
+    try {
+      const res = await apiDeleteAudio(patient.id, activeAudioTab);
+      setAnalyses((prev) => {
+        const next = { ...prev };
+        delete next[activeAudioTab];
+        return next;
+      });
+      if (res.patient) {
+        setPatients((prev) =>
+          prev.map((p) =>
+            p.id === res.patient.id
+              ? {
+                  ...p,
+                  ...res.patient,
+                  audioLogs: {
+                    ...p.audioLogs,
+                    [activeAudioTab]: { available: false, status: 'Not recorded', duration: '0:00' },
+                  },
+                }
+              : p
+          )
+        );
+      }
+      setIsPlaying(false);
+      setPlayProgress(0);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+      alert(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const triggerESP32Record = async () => {
     try {
@@ -1332,6 +1446,15 @@ function Dashboard() {
             </SectionHead>
 
             <div className="mt-4">
+              {/* One hidden picker serves both the empty and populated states */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_AUDIO}
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+
               {patient?.audioLogs?.[activeAudioTab]?.available ? (
                 <div>
                   <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
@@ -1393,6 +1516,47 @@ function Dashboard() {
                       {playProgress}%
                     </span>
                   </div>
+
+                  {/* Manage the stored recording */}
+                  <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadState.busy || deleting}
+                      className="btn-line !py-1.5 disabled:opacity-50"
+                    >
+                      <Upload className="w-3 h-3" /> {t('audio.replace')}
+                    </button>
+                    <button
+                      onClick={handleDeleteAudio}
+                      disabled={uploadState.busy || deleting}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
+                                 border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
+                                 dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
+                                 transition-colors duration-200 active:translate-y-px disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
+                    </button>
+
+                    {uploadState.busy && (
+                      <span className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                        {uploadState.message}
+                      </span>
+                    )}
+                    {!uploadState.busy && uploadState.message && (
+                      <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                        {uploadState.message}
+                      </span>
+                    )}
+                    {uploadState.error && (
+                      <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">
+                        {uploadState.error}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-2 leading-relaxed">
+                    {t('audio.deleteNote')}
+                  </p>
                 </div>
               ) : (
                 <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-6 px-4 text-center">
@@ -1426,20 +1590,45 @@ function Dashboard() {
                       <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
                         {t('audio.noneDetail')}
                       </p>
-                      <div className="flex justify-center gap-3">
+                      <div className="flex flex-wrap justify-center gap-3">
                         <button
                           onClick={triggerESP32Record}
-                          className="btn-line hover:border-med-500 hover:text-med-500"
+                          disabled={uploadState.busy}
+                          className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
                         >
-                          🎙️ Trigger ESP32 Mic
+                          <Mic className="w-3 h-3" /> {t('audio.useEsp32')}
                         </button>
                         <button
                           onClick={startBrowserRecording}
-                          className="btn-line hover:border-risk-mod hover:text-risk-mod"
+                          disabled={uploadState.busy}
+                          className="btn-line hover:border-risk-mod hover:text-risk-mod disabled:opacity-50"
                         >
-                          💻 Use Browser Mic
+                          <Laptop className="w-3 h-3" /> {t('audio.useBrowserMic')}
+                        </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadState.busy}
+                          className="btn-ink disabled:opacity-50"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
                         </button>
                       </div>
+
+                      {uploadState.busy && (
+                        <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                          {uploadState.message}
+                        </p>
+                      )}
+                      {uploadState.error && (
+                        <p className="font-mono text-[10px] text-risk-high dark:text-risk-highd max-w-md mx-auto leading-relaxed">
+                          {uploadState.error}
+                        </p>
+                      )}
+
+                      <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 leading-relaxed">
+                        {t('audio.uploadHint')}
+                      </p>
                     </div>
                   )}
                 </div>
