@@ -65,9 +65,9 @@ app.use('/uploads', (req, res, next) => {
   }
 }));
 
-// Force Content-Type to JSON for device API if Content-Type is text/plain or missing
-app.use('/api/device', (req, res, next) => {
-  if (req.method === 'POST') {
+// Force Content-Type to JSON for all API routes if Content-Type is text/plain or missing
+app.use('/api', (req, res, next) => {
+  if (req.method === 'POST' || req.method === 'PUT') {
     const ct = req.headers['content-type'];
     if (!ct || ct.includes('text/plain')) {
       req.headers['content-type'] = 'application/json';
@@ -79,7 +79,7 @@ app.use('/api/device', (req, res, next) => {
 // Parse JSON, URL-encoded, and raw text request bodies (with 15MB limit for audio data)
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
-app.use(express.text({ limit: '15mb', type: ['text/*', 'application/octet-stream', 'application/json'] }));
+app.use(express.text({ limit: '15mb', type: ['text/*', 'application/octet-stream'] }));
 
 // ─── Routes ─────────────────────────────────────────────────────────
 

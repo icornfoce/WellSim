@@ -73,12 +73,39 @@ export default function PatientFormModal({
   const setVital = (field, value) =>
     setForm(prev => ({ ...prev, vitals: { ...prev.vitals, [field]: value } }));
 
-  const num = (v) => (v === '' || v === null ? undefined : Number(v));
+  const preventNegative = (e) => {
+    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+      e.preventDefault();
+    }
+  };
+
+  const sanitizeVal = (val) => {
+    if (val === '' || val === null || val === undefined) return '';
+    const clean = String(val).replace(/[-eE]/g, '');
+    const num = Number(clean);
+    return Number.isNaN(num) || num < 0 ? '' : clean;
+  };
+
+  const num = (v) => (v === '' || v === null ? undefined : Math.max(0, Number(v)));
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
       setError(t('modal.nameReq'));
+      return;
+    }
+
+    // Validation: ensure no numeric field is negative
+    if (form.age !== '' && Number(form.age) < 0) {
+      setError('Age cannot be negative.');
+      return;
+    }
+    if (form.weight !== '' && Number(form.weight) < 0) {
+      setError('Weight cannot be negative.');
+      return;
+    }
+    if (form.height !== '' && Number(form.height) < 0) {
+      setError('Height cannot be negative.');
       return;
     }
 
@@ -158,8 +185,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.age')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.age}
-                    onChange={(e) => setField('age', e.target.value)}
+                    onChange={(e) => setField('age', sanitizeVal(e.target.value))}
                     placeholder={t('modal.agePh')}
                     className="field tabular-nums"
                   />
@@ -181,8 +210,10 @@ export default function PatientFormModal({
                   <input
                     type="number"
                     step="0.1"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.weight}
-                    onChange={(e) => setField('weight', e.target.value)}
+                    onChange={(e) => setField('weight', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -190,8 +221,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.heightCm')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.height}
-                    onChange={(e) => setField('height', e.target.value)}
+                    onChange={(e) => setField('height', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -220,8 +253,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.spo2')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.spo2}
-                    onChange={(e) => setVital('spo2', e.target.value)}
+                    onChange={(e) => setVital('spo2', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -229,8 +264,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.hr')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.heartRate}
-                    onChange={(e) => setVital('heartRate', e.target.value)}
+                    onChange={(e) => setVital('heartRate', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -238,8 +275,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.sys')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.systolicBP}
-                    onChange={(e) => setVital('systolicBP', e.target.value)}
+                    onChange={(e) => setVital('systolicBP', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -247,8 +286,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.dia')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.diastolicBP}
-                    onChange={(e) => setVital('diastolicBP', e.target.value)}
+                    onChange={(e) => setVital('diastolicBP', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -256,8 +297,10 @@ export default function PatientFormModal({
                   <label className="microlabel block mb-1">{t('modal.wbc')}</label>
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.wbc}
-                    onChange={(e) => setVital('wbc', e.target.value)}
+                    onChange={(e) => setVital('wbc', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>
@@ -266,8 +309,10 @@ export default function PatientFormModal({
                   <input
                     type="number"
                     step="0.1"
+                    min="0"
+                    onKeyDown={preventNegative}
                     value={form.vitals.hemoglobin}
-                    onChange={(e) => setVital('hemoglobin', e.target.value)}
+                    onChange={(e) => setVital('hemoglobin', sanitizeVal(e.target.value))}
                     className="field tabular-nums"
                   />
                 </div>

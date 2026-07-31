@@ -1339,8 +1339,10 @@ function Dashboard() {
                 {isEditing ? (
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                     value={editedVitals.spo2 || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, spo2: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) => setEditedVitals(prev => ({ ...prev, spo2: Math.max(0, parseInt(e.target.value) || 0) }))}
                     className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
@@ -1367,8 +1369,10 @@ function Dashboard() {
                 {isEditing ? (
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                     value={editedVitals.heartRate || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, heartRate: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) => setEditedVitals(prev => ({ ...prev, heartRate: Math.max(0, parseInt(e.target.value) || 0) }))}
                     className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
@@ -1396,15 +1400,19 @@ function Dashboard() {
                   <div className="flex items-center gap-1.5 mt-2">
                     <input
                       type="number"
+                      min="0"
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       value={editedVitals.systolicBP || ''}
-                      onChange={(e) => setEditedVitals(prev => ({ ...prev, systolicBP: parseInt(e.target.value) || 0 }))}
+                      onChange={(e) => setEditedVitals(prev => ({ ...prev, systolicBP: Math.max(0, parseInt(e.target.value) || 0) }))}
                       className="field !text-lg !font-light tabular-nums"
                     />
                     <span className="text-muted">/</span>
                     <input
                       type="number"
+                      min="0"
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       value={editedVitals.diastolicBP || ''}
-                      onChange={(e) => setEditedVitals(prev => ({ ...prev, diastolicBP: parseInt(e.target.value) || 0 }))}
+                      onChange={(e) => setEditedVitals(prev => ({ ...prev, diastolicBP: Math.max(0, parseInt(e.target.value) || 0) }))}
                       className="field !text-lg !font-light tabular-nums"
                     />
                   </div>
@@ -1432,8 +1440,10 @@ function Dashboard() {
                 {isEditing ? (
                   <input
                     type="number"
+                    min="0"
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                     value={editedVitals.wbc || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, wbc: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) => setEditedVitals(prev => ({ ...prev, wbc: Math.max(0, parseInt(e.target.value) || 0) }))}
                     className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (
@@ -1461,8 +1471,10 @@ function Dashboard() {
                   <input
                     type="number"
                     step="0.1"
+                    min="0"
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                     value={editedVitals.hemoglobin || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, hemoglobin: parseFloat(e.target.value) || 0 }))}
+                    onChange={(e) => setEditedVitals(prev => ({ ...prev, hemoglobin: Math.max(0, parseFloat(e.target.value) || 0) }))}
                     className="field mt-2 !text-lg !font-light tabular-nums"
                   />
                 ) : (

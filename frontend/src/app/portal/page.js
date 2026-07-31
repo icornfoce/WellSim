@@ -10,13 +10,19 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, RefreshCw, Pencil, Check, Upload, Printer } from 'lucide-react';
+import { LogOut, RefreshCw, Pencil, Check, Upload, Printer, Mic, Play, Pause, Trash2, Laptop } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
 import { dataDictionaryTH } from '../../i18n/translations';
-import { fetchMyRecord, updateMyRecord, uploadAudio as apiUploadAudio } from '../../services/api';
-import { encodeWavFromBlob, formatDuration } from '../../lib/audioEncoder';
+import {
+  fetchMyRecord,
+  updateMyRecord,
+  uploadAudio as apiUploadAudio,
+  deleteAudio as apiDeleteAudio,
+  API_URL,
+} from '../../services/api';
+import { encodeWavFromBlob, formatDuration, ACCEPTED_AUDIO } from '../../lib/audioEncoder';
 
 function PulseMark({ className = 'w-4 h-4' }) {
   return (
@@ -131,35 +137,209 @@ export default function PortalPage() {
     }
   };
 
-  // Patient audio upload
-  const [uploadingType, setUploadingType] = useState(null);
-  const [uploadMsg, setUploadMsg] = useState('');
+  // Patient audio recording & playback states
+  const [activeAudioTab, setActiveAudioTab] = useState('lung');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playProgress, setPlayProgress] = useState(0);
+  const [isBrowserRecording, setIsBrowserRecording] = useState(false);
+  const [browserRecordTime, setBrowserRecordTime] = useState(0);
+  const [uploadState, setUploadState] = useState({ busy: false, message: '', error: '' });
+  const [deleting, setDeleting] = useState(false);
 
-  const handleAudioUpload = async (type, event) => {
+  const audioRef = React.useRef(null);
+  const mediaRecorderRef = React.useRef(null);
+  const audioChunksRef = React.useRef([]);
+  const fileInputRef = React.useRef(null);
+
+  useEffect(() => {
+    let interval;
+    if (isBrowserRecording) {
+      interval = setInterval(() => {
+        setBrowserRecordTime((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isBrowserRecording]);
+
+  const handleTogglePlay = () => {
+    const audioLog = record?.audioLogs?.[activeAudioTab];
+    if (!audioLog || !audioLog.available) return;
+
+    if (isPlaying) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+    } else {
+      setIsPlaying(true);
+      setPlayProgress(0);
+
+      if (audioLog.url) {
+        const fullUrl = audioLog.url.startsWith('http')
+          ? audioLog.url
+          : `${API_URL}${audioLog.url}`;
+
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+
+        const audio = new Audio(fullUrl);
+        audio.crossOrigin = 'anonymous';
+        audioRef.current = audio;
+
+        audio.addEventListener('timeupdate', () => {
+          if (audio.duration && isFinite(audio.duration)) {
+            setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
+          }
+        });
+
+        audio.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setPlayProgress(0);
+        });
+
+        audio.addEventListener('error', () => {
+          audioRef.current = null;
+          setIsPlaying(false);
+        });
+
+        audio.play().catch((err) => {
+          console.error('Audio playback failed:', err);
+          setIsPlaying(false);
+        });
+      }
+    }
+  };
+
+  const startBrowserRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      let options = {};
+      let detectedMime = 'audio/wav';
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        options = { mimeType: 'audio/webm' };
+        detectedMime = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options = { mimeType: 'audio/mp4' };
+        detectedMime = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        options = { mimeType: 'audio/ogg' };
+        detectedMime = 'audio/ogg';
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: detectedMime });
+        stream.getTracks().forEach((track) => track.stop());
+
+        try {
+          setUploadState({ busy: true, message: lang === 'th' ? 'กำลังแปลงไฟล์เสียง…' : 'Converting recording…', error: '' });
+          const wav = await encodeWavFromBlob(audioBlob);
+          const mins = Math.floor(wav.durationSec / 60);
+          const secs = Math.round(wav.durationSec % 60);
+
+          const data = await apiUploadAudio({
+            patientId: record.id,
+            type: activeAudioTab,
+            audioBase64: wav.base64,
+            duration: `${mins}:${String(secs).padStart(2, '0')}`,
+            deviceId: 'PATIENT-MIC',
+          });
+
+          if (data.success) {
+            setUploadState({
+              busy: false,
+              message: lang === 'th' ? 'บันทึกและอัปโหลดเสียงสำเร็จ!' : 'Audio recorded and saved successfully!',
+              error: '',
+            });
+            await load();
+          } else {
+            setUploadState({ busy: false, message: '', error: data.error || 'Failed to save audio' });
+          }
+        } catch (err) {
+          setUploadState({ busy: false, message: '', error: err.message || 'Error processing audio recording.' });
+        } finally {
+          setIsBrowserRecording(false);
+          setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 5000);
+        }
+      };
+
+      mediaRecorder.start(100);
+      setIsBrowserRecording(true);
+      setBrowserRecordTime(0);
+    } catch (err) {
+      setUploadState({
+        busy: false,
+        message: '',
+        error: (lang === 'th' ? 'ไม่สามารถเข้าถึงไมโครโฟนได้: ' : 'Microphone access denied: ') + err.message,
+      });
+    }
+  };
+
+  const stopBrowserRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !record) return;
 
-    setUploadingType(type);
-    setUploadMsg(lang === 'th' ? 'กำลังแปลงและอัปโหลดไฟล์เสียง…' : 'Converting and uploading audio…');
+    setUploadState({ busy: true, message: lang === 'th' ? 'กำลังอัปโหลด…' : 'Uploading…', error: '' });
 
     try {
       const wav = await encodeWavFromBlob(file);
       await apiUploadAudio({
         patientId: record.id,
-        type,
+        type: activeAudioTab,
         audioBase64: wav.base64,
         duration: formatDuration(wav.durationSec),
         deviceId: 'PATIENT-PORTAL',
       });
 
-      setUploadMsg(lang === 'th' ? 'อัปโหลดเสียงเรียบร้อยแล้ว!' : 'Upload successful! AI screening updated.');
+      setUploadState({
+        busy: false,
+        message: lang === 'th' ? 'อัปโหลดไฟล์เสียงสำเร็จ!' : 'Upload successful!',
+        error: '',
+      });
       await load();
     } catch (err) {
-      setError(err.message || 'Failed to upload audio.');
+      setUploadState({ busy: false, message: '', error: err.message || 'Failed to upload audio.' });
     } finally {
-      setUploadingType(null);
-      setTimeout(() => setUploadMsg(''), 4000);
+      setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 5000);
+    }
+  };
+
+  const handleDeleteAudio = async () => {
+    if (!record) return;
+    if (!window.confirm(lang === 'th' ? 'ต้องการลบไฟล์เสียงนี้ใช่หรือไม่?' : 'Delete this recording?')) return;
+
+    setDeleting(true);
+    try {
+      await apiDeleteAudio(record.id, activeAudioTab);
+      setIsPlaying(false);
+      setPlayProgress(0);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      await load();
+    } catch (err) {
+      setUploadState({ busy: false, message: '', error: err.message || 'Failed to delete audio.' });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -416,8 +596,9 @@ export default function PortalPage() {
                         type="number"
                         min="0"
                         max="120"
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                         value={demoForm.age}
-                        onChange={(e) => setDemoForm({ ...demoForm, age: e.target.value })}
+                        onChange={(e) => setDemoForm({ ...demoForm, age: String(e.target.value).replace(/[-eE]/g, '') })}
                         placeholder="yrs"
                         className="field w-full text-xs"
                       />
@@ -429,8 +610,9 @@ export default function PortalPage() {
                           type="number"
                           step="0.1"
                           min="0"
+                          onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                           value={demoForm.weight}
-                          onChange={(e) => setDemoForm({ ...demoForm, weight: e.target.value })}
+                          onChange={(e) => setDemoForm({ ...demoForm, weight: String(e.target.value).replace(/[-eE]/g, '') })}
                           placeholder="kg"
                           className="field w-full text-xs"
                         />
@@ -441,8 +623,9 @@ export default function PortalPage() {
                           type="number"
                           step="0.1"
                           min="0"
+                          onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                           value={demoForm.height}
-                          onChange={(e) => setDemoForm({ ...demoForm, height: e.target.value })}
+                          onChange={(e) => setDemoForm({ ...demoForm, height: String(e.target.value).replace(/[-eE]/g, '') })}
                           placeholder="cm"
                           className="field w-full text-xs"
                         />
@@ -594,51 +777,193 @@ export default function PortalPage() {
               </div>
             </div>
 
-            {/* Recordings — upload or show status */}
+            {/* Recordings — 3-type audio recording & playback */}
             <div className="card p-5 will-fade-up animate-delay-300">
-              <SectionHead index="03" title={t('audio.title')} />
-
-              {uploadMsg && (
-                <div className="mt-3 px-3 py-2 rounded border border-med-500/30 bg-med-500/[0.06] text-xs text-med-600 dark:text-med-300 animate-fade-in">
-                  {uploadMsg}
+              <SectionHead index="03" title={t('audio.title')}>
+                <div className="flex gap-3">
+                  {['lung', 'heart', 'cough'].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => {
+                        setActiveAudioTab(tab);
+                        setIsPlaying(false);
+                        setPlayProgress(0);
+                      }}
+                      className={`text-xs capitalize pb-0.5 border-b transition-colors duration-200 ${
+                        activeAudioTab === tab
+                          ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
+                          : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
+                      }`}
+                    >
+                      {t('audio.' + tab)}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </SectionHead>
 
-              <div className="mt-4 divide-y divide-hairline dark:divide-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden">
-                {audioRows.map((row) => (
-                  <div key={row.key} className="flex items-center justify-between px-4 py-3 bg-surface dark:bg-coal-900">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-xs font-medium text-ink dark:text-chalk capitalize">{row.label}</p>
-                      {row.available ? (
-                        <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
-                          {t('audio.recorded')} · {row.duration}
-                        </p>
-                      ) : (
-                        <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                          {t('audio.notRecorded')}
-                        </p>
-                      )}
+              <div className="mt-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_AUDIO}
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+
+                {record?.audioLogs?.[activeAudioTab]?.available ? (
+                  <div>
+                    <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
+                      <span className="truncate pr-4">
+                        {t('audio.' + activeAudioTab)} · {record.audioLogs[activeAudioTab].status || t('audio.recorded')}
+                      </span>
+                      <span className="shrink-0">
+                        {t('audio.dur')} {record.audioLogs[activeAudioTab].duration || '0:00'}
+                      </span>
                     </div>
-                    <label className={`btn-line !py-1 !px-2.5 text-[11px] flex items-center gap-1.5 cursor-pointer ${
-                      uploadingType === row.key ? 'opacity-50 pointer-events-none' : ''
-                    }`}>
-                      <Upload className="w-3 h-3" />
-                      <span>{uploadingType === row.key
-                        ? (lang === 'th' ? 'กำลังอัปโหลด…' : 'Uploading…')
-                        : (row.available
-                          ? (lang === 'th' ? 'อัปโหลดใหม่' : 'Re-upload')
-                          : (lang === 'th' ? 'อัปโหลดเสียง' : 'Upload'))
-                      }</span>
-                      <input
-                        type="file"
-                        accept="audio/*"
-                        className="hidden"
-                        disabled={uploadingType === row.key}
-                        onChange={(e) => handleAudioUpload(row.key, e)}
-                      />
-                    </label>
+
+                    {/* Audio Player Box */}
+                    <div className="mt-3 bg-ink dark:bg-coal-850 dark:border dark:border-coal-700 rounded-md p-4 flex items-center gap-4">
+                      <button
+                        onClick={handleTogglePlay}
+                        className="w-10 h-10 rounded bg-med-500 hover:bg-med-400 text-white flex items-center justify-center flex-shrink-0 transition-colors duration-200 active:translate-y-px"
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
+                      </button>
+
+                      <div className="relative flex-1 h-3 bg-white/20 dark:bg-coal-700 rounded overflow-hidden">
+                        <div
+                          className="absolute top-0 bottom-0 left-0 bg-med-400 transition-all duration-300"
+                          style={{ width: `${playProgress}%` }}
+                        />
+                      </div>
+
+                      <span className="font-mono text-[10px] text-white/60 tabular-nums w-9 text-right shrink-0">
+                        {playProgress}%
+                      </span>
+                    </div>
+
+                    {/* Controls for current recording */}
+                    <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadState.busy || deleting || isBrowserRecording}
+                        className="btn-line !py-1.5 disabled:opacity-50"
+                      >
+                        <Upload className="w-3 h-3" /> {t('audio.replace')}
+                      </button>
+                      <button
+                        onClick={handleDeleteAudio}
+                        disabled={uploadState.busy || deleting || isBrowserRecording}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06] dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08] transition-colors duration-200 active:translate-y-px disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
+                      </button>
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-6 px-4 text-center">
+                    <p className="microlabel mb-2">{t('audio.none')}</p>
+
+                    {isBrowserRecording ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-risk-high rounded-full animate-pulse" />
+                          <span className="font-mono text-xs text-risk-high">
+                            {lang === 'th' ? `กำลังบันทึกเสียง (${browserRecordTime}s)` : `Recording audio... (${browserRecordTime}s)`}
+                          </span>
+                        </div>
+                        <button
+                          onClick={stopBrowserRecording}
+                          className="btn-line border-risk-high text-risk-high hover:bg-risk-high/[0.05]"
+                        >
+                          {lang === 'th' ? 'หยุดการบันทึก' : 'Stop Recording'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
+                          {t('audio.noneDetail')}
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-3">
+                          <button
+                            onClick={startBrowserRecording}
+                            disabled={uploadState.busy}
+                            className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
+                          >
+                            <Mic className="w-3.5 h-3.5" /> {t('audio.useBrowserMic')}
+                          </button>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadState.busy}
+                            className="btn-ink disabled:opacity-50"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
+                          </button>
+                        </div>
+
+                        <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 leading-relaxed">
+                          {t('audio.uploadHint')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Status messages */}
+                {uploadState.busy && (
+                  <p className="mt-3 font-mono text-[10px] text-med-600 dark:text-med-300">
+                    {uploadState.message}
+                  </p>
+                )}
+                {!uploadState.busy && uploadState.message && (
+                  <p className="mt-3 font-mono text-[10px] text-med-600 dark:text-med-300">
+                    {uploadState.message}
+                  </p>
+                )}
+                {uploadState.error && (
+                  <p className="mt-3 font-mono text-[10px] text-risk-high dark:text-risk-highd">
+                    {uploadState.error}
+                  </p>
+                )}
+
+                {/* Summary Table of all 3 audio types */}
+                <div className="mt-5 divide-y divide-hairline dark:divide-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden">
+                  {['lung', 'heart', 'cough'].map((key) => {
+                    const log = record?.audioLogs?.[key];
+                    const isTabActive = activeAudioTab === key;
+                    return (
+                      <div
+                        key={key}
+                        onClick={() => {
+                          setActiveAudioTab(key);
+                          setIsPlaying(false);
+                          setPlayProgress(0);
+                        }}
+                        className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors duration-150 ${
+                          isTabActive ? 'bg-ink/[0.04] dark:bg-coal-800' : 'bg-surface dark:bg-coal-900 hover:bg-ink/[0.02]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full ${log?.available ? 'bg-med-500' : 'bg-muted/40'}`} />
+                          <p className="text-xs font-medium text-ink dark:text-chalk capitalize">{t('audio.' + key)}</p>
+                          {log?.available ? (
+                            <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                              {t('audio.recorded')} · {log.duration}
+                            </p>
+                          ) : (
+                            <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                              {t('audio.notRecorded')}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                          {isTabActive ? (lang === 'th' ? 'กำลังเลือก' : 'Active') : (lang === 'th' ? 'เลือก' : 'Select')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

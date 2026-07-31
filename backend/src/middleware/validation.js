@@ -155,7 +155,15 @@ function validateDemographics(data = {}) {
 
 /** Express middleware — reject out-of-range vitals before they are stored. */
 function validateVitalsPayload(req, res, next) {
-  const body = req.body || {};
+  let body = req.body || {};
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+      req.body = body;
+    } catch {
+      body = {};
+    }
+  }
   // Accept both { spo2: … } and { vitals: { spo2: … } } shapes
   const vitals = body.vitals && typeof body.vitals === 'object' ? body.vitals : body;
 
