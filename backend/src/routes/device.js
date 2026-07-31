@@ -17,7 +17,15 @@ const deviceService = require('../services/deviceService');
 const dbService = require('../services/dbService');
 const { getPatientById } = require('../services/dbService');
 const { validateDeviceData } = require('../middleware/validation');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole, requireDeviceOrUser } = require('../middleware/auth');
+
+/**
+ * Endpoints the ESP32 talks to accept either a device key or a signed-in
+ * clinical user. They were previously wide open, which let anyone on the
+ * network post fabricated audio into a patient's record or command a
+ * device in a clinic to start recording.
+ */
+const deviceOrStaff = requireDeviceOrUser;
 
 // In-memory store for device commands
 // Key: device_id -> Value: { command, patient_id, type }
@@ -25,7 +33,7 @@ const deviceCommands = new Map();
 
 // ─── POST /api/device/command ────────────────────────────────────────
 // Called by Web UI to issue a command (e.g. record)
-router.post('/command', (req, res) => {
+router.post('/command', deviceOrStaff, (req, res) => {
   const { device_id, command, patient_id, type } = req.body;
   if (!device_id || !command) {
     return res.status(400).json({ success: false, error: 'Missing device_id or command' });
@@ -43,7 +51,7 @@ router.post('/command', (req, res) => {
 
 // ─── GET /api/device/command ─────────────────────────────────────────
 // Polled by ESP32 to check for pending commands
-router.get('/command', (req, res) => {
+router.get('/command', deviceOrStaff, (req, res) => {
   const { device_id } = req.query;
   if (!device_id) {
     return res.status(400).json({ success: false, error: 'Missing device_id parameter' });
@@ -59,7 +67,7 @@ router.get('/command', (req, res) => {
   res.status(200).json({ command: 'none' });
 });
 
-router.post('/audio', (req, res) => {
+router.post('/audio', deviceOrStaff, (req, res) => {
   try {
     console.log('📥 Incoming /audio request headers:', req.headers);
     
@@ -266,7 +274,7 @@ router.delete('/audio/:patientId/:type', requireAuth, (req, res) => {
 // ─── POST /api/device/data ──────────────────────────────────────────
 // Receive sensor data from ESP32.
 // The validation middleware ensures payload integrity before processing.
-router.post('/data', validateDeviceData, (req, res) => {
+router.post('/data', deviceOrStaff, validateDeviceData, (req, res) => {
   try {
     const record = deviceService.storeDeviceData(req.body);
 

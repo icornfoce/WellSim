@@ -283,11 +283,11 @@ export async function sendTestData(data) {
  * @param {Object} data - { name, email, password, role, station }
  * @returns {Promise<Object>} { success, token, user }
  */
-export async function register({ name, email, password, role, station }) {
+export async function register({ name, email, password, role, station, staffCode }) {
   const response = await fetch(`${AUTH_BASE}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password, role, station }),
+    body: JSON.stringify({ name, email, password, role, station, staffCode }),
   });
 
   const data = await response.json();
@@ -325,6 +325,31 @@ export async function uploadAudio({ patientId, type, audioBase64, duration, devi
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
     throw new Error(data.error || `Upload failed (HTTP ${response.status})`);
+  }
+  return data;
+}
+
+/**
+ * Ask a device to start recording.
+ *
+ * @param {Object} payload - { deviceId, command, patientId, type }
+ * @returns {Promise<Object>} { success, message }
+ */
+export async function sendDeviceCommand({ deviceId, command, patientId, type }) {
+  const response = await fetch(`${DEVICE_BASE}/command`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      device_id: deviceId,
+      command,
+      patient_id: patientId,
+      type,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || `Command failed (HTTP ${response.status})`);
   }
   return data;
 }

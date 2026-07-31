@@ -6,9 +6,20 @@
  */
 
 const crypto = require('crypto');
+const config = require('../../config');
 
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'wellsim-secret-key-2026';
+// Resolved in config/index.js, which refuses to boot in production
+// without a real secret rather than falling back to a public constant.
+const TOKEN_SECRET = config.TOKEN_SECRET;
 const TOKEN_EXPIRY_HOURS = 24;
+
+/** Constant-time string compare — leaks no information via timing. */
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 // ─── Token Creation ──────────────────────────────────────────────────
 
@@ -57,7 +68,7 @@ function verifyToken(token) {
       .update(payloadBase64)
       .digest('base64url');
 
-    if (signature !== expectedSig) return null;
+    if (!safeEqual(signature, expectedSig)) return null;
 
     // Decode payload
     const payload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString());
@@ -133,9 +144,90 @@ function requireRole(...roles) {
   };
 }
 
+/**
+ * Accept EITHER a logged-in clinical user OR a registered IoT device.
+ *
+ * The dashboard drives these endpoints with a user token; the ESP32
+ * has no user account and presents `X-Device-Key` instead. Before this
+ * existed the endpoints were fully open, which meant anyone on the
+ * internet could plant a recording into a patient's record or make a
+ * device in a clinic start recording.
+ */
+function requireDeviceOrUser(req, res, next) {
+  const deviceKey = req.headers['x-device-key'];
+  if (deviceKey && safeEqual(deviceKey, config.DEVICE_API_KEY)) {
+    req.device = { authenticated: true, id: req.body?.device_id || 'unknown' };
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const decoded = verifyToken(authHeader.substring(7));
+    if (decoded) {
+      req.user = decoded;
+      return next();
+    }
+  }
+
+  return res.status(401).json({
+    success: false,
+    error:
+      'Authentication required. Sign in as clinical staff, or send the ' +
+      'device key in the X-Device-Key header.',
+  });
+}
+
+/**
+ * Fixed-window rate limiter, in memory.
+ *
+ * Enough to stop credential stuffing against the login endpoint on a
+ * single-instance deployment. A multi-instance deployment needs a
+ * shared store (Redis) — noted in docs/SECURITY.md.
+ */
+function rateLimit({ windowMs = 60_000, max = 10, keyPrefix = '' } = {}) {
+  const hits = new Map();
+
+  // Evict expired buckets so the map cannot grow without bound
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of hits) {
+      if (now > entry.resetAt) hits.delete(key);
+    }
+  }, windowMs).unref();
+
+  return function (req, res, next) {
+    const ip =
+      (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+      req.socket.remoteAddress ||
+      'unknown';
+    const key = `${keyPrefix}:${ip}`;
+    const now = Date.now();
+
+    let entry = hits.get(key);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + windowMs };
+      hits.set(key, entry);
+    }
+    entry.count++;
+
+    if (entry.count > max) {
+      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      res.setHeader('Retry-After', retryAfter);
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Please try again in ${retryAfter} seconds.`,
+      });
+    }
+    next();
+  };
+}
+
 module.exports = {
   generateToken,
   verifyToken,
   requireAuth,
   requireRole,
+  requireDeviceOrUser,
+  rateLimit,
+  safeEqual,
 };

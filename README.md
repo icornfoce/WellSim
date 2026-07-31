@@ -10,6 +10,17 @@ modifies, or rejects it. Every disagreement is logged as training data.
 
 ---
 
+## ⚙️ Configuration
+
+`backend/.env` is required. Copy `backend/.env.example` and set at minimum
+`TOKEN_SECRET` and `DEVICE_API_KEY` — **the server refuses to start in
+production without them** rather than falling back to a value published in
+this repository. `STAFF_REGISTRATION_CODE` gates nurse/doctor signup; leave
+it blank to disable staff self-registration entirely.
+
+See [`docs/SECURITY.md`](docs/SECURITY.md) for the audit that produced these
+requirements.
+
 ## 📐 Architecture
 
 ```
@@ -130,11 +141,21 @@ curl -X POST http://localhost:3001/api/analysis/p1/lung/review \
 A nurse token gets `403` with an explanation. Rejecting a result **requires** a
 written reason — that reason is what the model learns from.
 
-### Running the validation suite
+### Running the test suites
 
 ```bash
-cd backend && node test/validate.js
+cd backend
+cp .env.example .env      # fill in TOKEN_SECRET and DEVICE_API_KEY first
+
+node test/validate.js     # 47 DSP assertions (no server needed)
+
+npm start &               # the next two probe a live server
+node test/audio.test.js   # 23 upload / delete / permission assertions
+node test/audit.js        # security audit — expects 0 critical, 0 high
 ```
+
+Run `audit.js` last, or against a fresh server: it deliberately triggers the
+login rate limiter, which will then throttle anything that follows.
 
 47 assertions over synthetic signals with known ground truth: normal breathing
 raises no false alarm, a 400 Hz wheeze is found within ±80 Hz, crackles are

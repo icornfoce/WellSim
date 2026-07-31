@@ -35,6 +35,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('nurse');
   const [station, setStation] = useState('');
+  const [staffCode, setStaffCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -79,6 +80,7 @@ export default function RegisterPage() {
         password,
         role,
         station: station.trim(),
+        staffCode: role === 'patient' ? undefined : staffCode.trim(),
       });
 
       // Auto-login with the returned token
@@ -206,6 +208,26 @@ export default function RegisterPage() {
                   placeholder={role === 'doctor' ? t('register.stationPhDoctor') : t('register.stationPhNurse')}
                   className="field"
                 />
+              </div>
+            )}
+
+            {/* Clinical roles decide whether an AI result becomes a
+                finding, so they cannot be self-assigned from a public
+                form. The server rejects the request without this. */}
+            {role !== 'patient' && (
+              <div>
+                <label className="microlabel block mb-1.5">{t('register.staffCode')}</label>
+                <input
+                  type="password"
+                  value={staffCode}
+                  onChange={(e) => setStaffCode(e.target.value)}
+                  placeholder={t('register.staffCodePh')}
+                  className="field"
+                  autoComplete="off"
+                />
+                <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5 leading-relaxed">
+                  {t('register.staffCodeNote')}
+                </p>
               </div>
             )}
 

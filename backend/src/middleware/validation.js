@@ -74,4 +74,107 @@ function validateDeviceData(req, res, next) {
   next();
 }
 
-module.exports = { validateDeviceData };
+/**
+ * Physiologically possible ranges for manually entered vitals.
+ *
+ * These are deliberately wide — the bounds of human survivability, not
+ * of normality — because the job here is to catch typos and junk input,
+ * not to second-guess a clinician. A heart rate of 210 is real; 99999
+ * is a slipped keypress, and letting it through means the triage score
+ * gets computed from nonsense.
+ */
+const VITALS_RANGES = {
+  spo2:        { min: 50,   max: 100,   label: 'SpO₂ (%)' },
+  heartRate:   { min: 20,   max: 250,   label: 'Heart rate (bpm)' },
+  systolicBP:  { min: 50,   max: 260,   label: 'Systolic BP (mmHg)' },
+  diastolicBP: { min: 20,   max: 200,   label: 'Diastolic BP (mmHg)' },
+  wbc:         { min: 100,  max: 200000, label: 'WBC (/mcL)' },
+  hemoglobin:  { min: 2,    max: 25,    label: 'Hemoglobin (g/dL)' },
+};
+
+const DEMOGRAPHIC_RANGES = {
+  age:    { min: 0, max: 130, label: 'Age (years)' },
+  weight: { min: 0.5, max: 400, label: 'Weight (kg)' },
+  height: { min: 20, max: 260, label: 'Height (cm)' },
+};
+
+/**
+ * Validate a vitals object. Blank/null values mean "not measured" and
+ * are always allowed — the UI shows "—" for them.
+ *
+ * @returns {string[]} Human-readable errors, empty if valid
+ */
+function validateVitals(vitals = {}) {
+  const errors = [];
+  for (const [field, range] of Object.entries(VITALS_RANGES)) {
+    if (!(field in vitals)) continue;
+    const raw = vitals[field];
+    if (raw === null || raw === undefined || raw === '') continue;
+
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      errors.push(`${range.label} must be a number.`);
+      continue;
+    }
+    if (value < range.min || value > range.max) {
+      errors.push(`${range.label} must be between ${range.min} and ${range.max} (got ${value}).`);
+    }
+  }
+
+  // Systolic must exceed diastolic — otherwise the reading is transposed
+  const sys = Number(vitals.systolicBP);
+  const dia = Number(vitals.diastolicBP);
+  if (Number.isFinite(sys) && Number.isFinite(dia) && sys > 0 && dia > 0 && sys <= dia) {
+    errors.push(`Systolic BP (${sys}) must be higher than diastolic (${dia}) — values may be swapped.`);
+  }
+
+  return errors;
+}
+
+/** Validate age / weight / height on a patient payload. */
+function validateDemographics(data = {}) {
+  const errors = [];
+  for (const [field, range] of Object.entries(DEMOGRAPHIC_RANGES)) {
+    if (!(field in data)) continue;
+    const raw = data[field];
+    if (raw === null || raw === undefined || raw === '') continue;
+
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      errors.push(`${range.label} must be a number.`);
+    } else if (value < range.min || value > range.max) {
+      errors.push(`${range.label} must be between ${range.min} and ${range.max} (got ${value}).`);
+    }
+  }
+
+  if ('name' in data && String(data.name).length > 200) {
+    errors.push('Patient name must be 200 characters or fewer.');
+  }
+  return errors;
+}
+
+/** Express middleware — reject out-of-range vitals before they are stored. */
+function validateVitalsPayload(req, res, next) {
+  const body = req.body || {};
+  // Accept both { spo2: … } and { vitals: { spo2: … } } shapes
+  const vitals = body.vitals && typeof body.vitals === 'object' ? body.vitals : body;
+
+  const errors = [...validateVitals(vitals), ...validateDemographics(body)];
+  if (errors.length) {
+    return res.status(400).json({
+      success: false,
+      error: errors[0],
+      errors,
+    });
+  }
+  next();
+}
+
+module.exports = {
+  validateDeviceData,
+  validateVitals,
+  validateDemographics,
+  validateVitalsPayload,
+  VITALS_RANGES,
+  DEMOGRAPHIC_RANGES,
+};

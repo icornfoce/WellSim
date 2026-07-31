@@ -27,13 +27,24 @@ const app = express();
 
 // ─── Middleware ──────────────────────────────────────────────────────
 
-// CORS — allow frontend to communicate with the API from any domain
-app.use(cors({
-  origin: true, // อนุญาตทุก Origin เพื่อป้องกันปัญหา CORS กับ Cloudflare
+// ─── CORS ────────────────────────────────────────────────────────────
+// In production, only the configured frontend origins are allowed.
+// `origin: true` reflects whatever Origin the caller sends, which with
+// credentials enabled means any website can call this API in a logged-in
+// user's browser. Requests with no Origin (the ESP32, curl, health
+// checks) are still allowed — CORS is a browser mechanism.
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (!config.IS_PRODUCTION) return callback(null, true);
+    if (config.CORS_ORIGINS.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Key'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // Request logging
 app.use(morgan('dev'));

@@ -15,7 +15,19 @@
 
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { validateVitalsPayload } = require('../middleware/validation');
+
+/**
+ * Clinical staff only.
+ *
+ * Every route below exposes other people's medical records. A `patient`
+ * account has exactly one legitimate destination — GET /me — and is
+ * refused everywhere else. Before this gate existed, any patient who
+ * signed up could list, read, edit and delete the entire clinic's
+ * records: a straightforward IDOR and a PDPA breach.
+ */
+const staffOnly = requireRole('nurse', 'doctor');
 const {
   getAllPatients,
   getPatientById,
@@ -29,7 +41,7 @@ const {
 
 // ─── GET /api/patients ───────────────────────────────────────────────
 // List all patients. Requires authentication.
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, staffOnly, (req, res) => {
   try {
     const patients = getAllPatients();
     res.status(200).json({
@@ -69,7 +81,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 // ─── PUT /api/patients/me ────────────────────────────────────────────
 // Allow a patient to edit or add their own demographic fields.
-router.put('/me', requireAuth, (req, res) => {
+router.put('/me', requireAuth, validateVitalsPayload, (req, res) => {
   try {
     if (req.user.role !== 'patient') {
       return res.status(403).json({
@@ -106,9 +118,47 @@ router.put('/me', requireAuth, (req, res) => {
 });
 
 
+// ─── POST /api/patients ──────────────────────────────────────────────
+// Create a new patient. Clinical staff only.
+//
+// This route went missing in an earlier refactor while the frontend
+// kept calling it, so "Add patient" returned 404 with no visible cause.
+router.post('/', requireAuth, staffOnly, validateVitalsPayload, (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Request body must be a JSON object containing patient data.',
+      });
+    }
+    if (!data.name || !String(data.name).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient name is required.',
+      });
+    }
+
+    const patient = createPatient(data);
+    console.log(`➕ Patient created: ${patient.name} (${patient.id}) by ${req.user.name}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Patient created successfully.',
+      patient,
+    });
+  } catch (error) {
+    console.error('❌ Error creating patient:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while creating patient.',
+    });
+  }
+});
+
 // ─── GET /api/patients/:id ───────────────────────────────────────────
 // Get a specific patient. Requires authentication.
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, staffOnly, (req, res) => {
   try {
     const patient = getPatientById(req.params.id);
     if (!patient) {
@@ -127,7 +177,7 @@ router.get('/:id', requireAuth, (req, res) => {
 
 // ─── PUT /api/patients/:id/vitals ────────────────────────────────────
 // Update a patient's vitals and recalculate risk. Requires authentication.
-router.put('/:id/vitals', requireAuth, (req, res) => {
+router.put('/:id/vitals', requireAuth, staffOnly, validateVitalsPayload, (req, res) => {
   try {
     const vitals = req.body;
     if (!vitals || typeof vitals !== 'object') {
@@ -163,7 +213,7 @@ router.put('/:id/vitals', requireAuth, (req, res) => {
 
 // ─── PUT /api/patients/:id ───────────────────────────────────────────
 // Update a patient's editable fields (and optionally vitals). Requires auth.
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, staffOnly, validateVitalsPayload, (req, res) => {
   try {
     const updates = req.body;
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
@@ -205,7 +255,7 @@ router.put('/:id', requireAuth, (req, res) => {
 
 // ─── DELETE /api/patients/:id ────────────────────────────────────────
 // Delete a patient. Requires authentication.
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, staffOnly, (req, res) => {
   try {
     const removed = deletePatient(req.params.id);
     if (!removed) {

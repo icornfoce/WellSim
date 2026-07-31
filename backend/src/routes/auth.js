@@ -11,16 +11,28 @@
 
 const express = require('express');
 const router = express.Router();
-const { findUserByEmail, createUser, verifyPassword, createBarePatientRecord } = require('../services/dbService');
-const { generateToken, requireAuth } = require('../middleware/auth');
+const {
+  findUserByEmail,
+  createUser,
+  checkPassword,
+  upgradePasswordHash,
+  createBarePatientRecord,
+} = require('../services/dbService');
+const { generateToken, requireAuth, requireRole, rateLimit, safeEqual } = require('../middleware/auth');
+const config = require('../../config');
 
 // ─── POST /api/auth/register ─────────────────────────────────────────
 const ALLOWED_ROLES = ['nurse', 'doctor', 'patient'];
+const STAFF_ROLES = ['nurse', 'doctor'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.post('/register', (req, res) => {
+// Signup is a write endpoint reachable without credentials — cap it
+const registerLimiter = rateLimit({ windowMs: 60_000, max: 5, keyPrefix: 'register' });
+const loginLimiter = rateLimit({ windowMs: 60_000, max: 10, keyPrefix: 'login' });
+
+router.post('/register', registerLimiter, (req, res) => {
   try {
-    const { name, email, password, role, station } = req.body || {};
+    const { name, email, password, role, station, staffCode } = req.body || {};
 
     // Validate input
     if (!name || String(name).trim().length < 2) {
@@ -46,6 +58,29 @@ router.post('/register', (req, res) => {
         success: false,
         error: 'Role must be "nurse", "doctor", or "patient".',
       });
+    }
+
+    // ── Clinical roles cannot be self-assigned ──
+    // A `doctor` account is the only thing that can turn an AI screening
+    // result into a clinical finding. If the public signup form can mint
+    // one, the entire physician-review layer is decorative.
+    if (STAFF_ROLES.includes(role)) {
+      if (!config.STAFF_REGISTRATION_CODE) {
+        return res.status(403).json({
+          success: false,
+          error:
+            'Staff registration is disabled on this server. A nurse or doctor ' +
+            'account must be created by an administrator.',
+        });
+      }
+      if (!staffCode || !safeEqual(staffCode, config.STAFF_REGISTRATION_CODE)) {
+        return res.status(403).json({
+          success: false,
+          error:
+            'A valid staff registration code is required to create a ' +
+            `"${role}" account. Contact your clinic administrator.`,
+        });
+      }
     }
 
     // Create the account
@@ -96,7 +131,7 @@ router.post('/register', (req, res) => {
 });
 
 // ─── POST /api/auth/login ────────────────────────────────────────────
-router.post('/login', (req, res) => {
+router.post('/login', loginLimiter, (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -118,11 +153,22 @@ router.post('/login', (req, res) => {
     }
 
     // Verify password
-    if (!verifyPassword(password, user.password)) {
+    const result = checkPassword(password, user.password);
+    if (!result.valid) {
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials. Please check your email and password.',
       });
+    }
+
+    // Transparently migrate legacy SHA-256 hashes to scrypt on first
+    // successful login, so no one has to reset their password.
+    if (result.needsUpgrade) {
+      try {
+        upgradePasswordHash(user.id, password);
+      } catch (e) {
+        console.error('⚠️ Password upgrade failed:', e.message);
+      }
     }
 
     // Generate token

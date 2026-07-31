@@ -12,23 +12,85 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DB_PATH = path.join(__dirname, '../../data/db.json');
-const SALT = 'wellsim-salt-2026';
+
+/** Legacy scheme — kept only so existing accounts can still log in once. */
+const LEGACY_SALT = 'wellsim-salt-2026';
 
 // ─── Password Utilities ─────────────────────────────────────────────
 
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 }; // ~100 ms/hash, OWASP-aligned
+
 /**
- * Hash a password using SHA-256 with a static salt.
- * For production, use bcrypt — this is a portable prototype approach.
+ * Hash a password with scrypt and a per-user random salt.
+ *
+ * Format: `scrypt$<saltHex>$<hashHex>`
+ *
+ * The previous scheme was a single unsalted SHA-256 with one salt shared
+ * by every account. Two problems: identical passwords produced identical
+ * hashes (so one leak deanonymises every reuse), and SHA-256 is designed
+ * to be fast — a GPU tries ~10^10 candidates per second. scrypt is
+ * deliberately slow and memory-hard, which collapses that to a few
+ * thousand per second.
+ *
+ * scrypt ships with Node, so this adds no dependency — relevant when the
+ * target deployment is a free-tier server.
  */
 function hashPassword(password) {
-  return crypto.createHash('sha256').update(SALT + password).digest('hex');
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, SCRYPT_KEYLEN, SCRYPT_PARAMS);
+  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+}
+
+/** Constant-time comparison of two hex strings. */
+function safeCompareHex(a, b) {
+  const bufA = Buffer.from(String(a), 'hex');
+  const bufB = Buffer.from(String(b), 'hex');
+  if (bufA.length !== bufB.length || bufA.length === 0) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 /**
- * Verify a plaintext password against a hash.
+ * Verify a plaintext password against a stored hash.
+ * Understands both the scrypt format and the legacy SHA-256 one.
+ *
+ * @returns {{ valid: boolean, needsUpgrade: boolean }}
  */
-function verifyPassword(password, hash) {
-  return hashPassword(password) === hash;
+function checkPassword(password, stored) {
+  if (typeof stored !== 'string' || !stored) return { valid: false, needsUpgrade: false };
+
+  if (stored.startsWith('scrypt$')) {
+    const [, saltHex, hashHex] = stored.split('$');
+    if (!saltHex || !hashHex) return { valid: false, needsUpgrade: false };
+    try {
+      const derived = crypto.scryptSync(
+        String(password), Buffer.from(saltHex, 'hex'), SCRYPT_KEYLEN, SCRYPT_PARAMS
+      );
+      return { valid: safeCompareHex(derived.toString('hex'), hashHex), needsUpgrade: false };
+    } catch {
+      return { valid: false, needsUpgrade: false };
+    }
+  }
+
+  // Legacy SHA-256 — verify, then flag for transparent re-hashing on login
+  const legacy = crypto.createHash('sha256').update(LEGACY_SALT + password).digest('hex');
+  return { valid: safeCompareHex(legacy, stored), needsUpgrade: safeCompareHex(legacy, stored) };
+}
+
+/** Backwards-compatible boolean form used by existing callers. */
+function verifyPassword(password, stored) {
+  return checkPassword(password, stored).valid;
+}
+
+/** Re-hash a verified password with the current scheme. */
+function upgradePasswordHash(userId, plaintext) {
+  const db = readDB();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return false;
+  user.password = hashPassword(plaintext);
+  writeDB(db);
+  console.log(`🔐 Upgraded password hash to scrypt for ${user.email}`);
+  return true;
 }
 
 // ─── Database Read/Write ─────────────────────────────────────────────
@@ -47,10 +109,7 @@ function readDB() {
     }
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
     const db = JSON.parse(raw);
-    ensurePatientDemo(db);
-    ensureNoFakeVitals(db);
-    ensureNoFabricatedAcoustics(db);
-    ensureAudioFilesExist(db);
+    runMigrationsOnce(db);
     return db;
   } catch (error) {
     console.error('❌ DB read error:', error.message);
@@ -62,6 +121,11 @@ function readDB() {
 
 /**
  * Write the entire database to disk.
+ *
+ * Writes to a temp file first, then renames. rename() is atomic on both
+ * POSIX and Windows, so a crash mid-write cannot leave a truncated
+ * db.json — which would take every patient record with it.
+ *
  * @param {Object} data - Full database object
  */
 function writeDB(data) {
@@ -70,10 +134,30 @@ function writeDB(data) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    const tmp = `${DB_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmp, DB_PATH);
   } catch (error) {
     console.error('❌ DB write error:', error.message);
   }
+}
+
+/**
+ * Run schema migrations exactly once per process.
+ *
+ * These used to run inside every readDB() call — and readDB() runs on
+ * every request, several times for some. ensureAudioFilesExist alone
+ * did an fs.existsSync per patient per recording type, so a 200-patient
+ * clinic performed 600 stat() calls to answer a single API request.
+ */
+let migrationsDone = false;
+function runMigrationsOnce(db) {
+  if (migrationsDone) return;
+  migrationsDone = true;
+  ensurePatientDemo(db);
+  ensureNoFakeVitals(db);
+  ensureNoFabricatedAcoustics(db);
+  ensureAudioFilesExist(db);
 }
 
 /**
@@ -934,6 +1018,8 @@ function getAgreementStats() {
 module.exports = {
   hashPassword,
   verifyPassword,
+  checkPassword,
+  upgradePasswordHash,
   readDB,
   writeDB,
   findUserByEmail,

@@ -242,6 +242,10 @@ export const translations = {
       errName: 'Please provide your full name (at least 2 characters).',
       errPass: 'Password must be at least 6 characters long.',
       errMatch: 'Passwords do not match.',
+      staffCode: 'Staff registration code',
+      staffCodePh: 'Issued by your clinic administrator',
+      staffCodeNote:
+        'Nurse and doctor accounts can approve or reject AI screening results, so they cannot be created without a code.',
     },
     portal: {
       kicker: 'Patient portal',
@@ -521,6 +525,10 @@ export const translations = {
       errName: 'กรุณากรอกชื่อ-นามสกุล (อย่างน้อย 2 ตัวอักษร)',
       errPass: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร',
       errMatch: 'รหัสผ่านไม่ตรงกัน',
+      staffCode: 'รหัสลงทะเบียนบุคลากร',
+      staffCodePh: 'ขอรหัสจากผู้ดูแลระบบของหน่วยงาน',
+      staffCodeNote:
+        'บัญชีพยาบาลและแพทย์มีสิทธิ์ยืนยันหรือปฏิเสธผลคัดกรองของ AI จึงต้องใช้รหัสในการสมัคร',
     },
     portal: {
       kicker: 'พอร์ทัลคนไข้',

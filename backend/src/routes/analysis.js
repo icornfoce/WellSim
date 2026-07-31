@@ -19,6 +19,9 @@ const fs = require('fs');
 const path = require('path');
 
 const { requireAuth, requireRole } = require('../middleware/auth');
+
+/** Analyses concern other people's medical records — staff only. */
+const staffOnly = requireRole('nurse', 'doctor');
 const audioAnalysis = require('../services/audioAnalysis');
 const {
   getPatientById,
@@ -80,7 +83,7 @@ function runAnalysisFor(patientId, type) {
 
 // ─── POST /api/analysis/run ──────────────────────────────────────────
 // Layer 1. Any authenticated clinical user may run the screening.
-router.post('/run', requireAuth, (req, res) => {
+router.post('/run', requireAuth, staffOnly, (req, res) => {
   try {
     const { patient_id, type } = req.body || {};
 
@@ -122,7 +125,7 @@ router.post('/run', requireAuth, (req, res) => {
 
 // ─── GET /api/analysis/:patientId ────────────────────────────────────
 // All stored analyses for a patient, with their review state.
-router.get('/:patientId', requireAuth, (req, res) => {
+router.get('/:patientId', requireAuth, staffOnly, (req, res) => {
   try {
     const patient = getPatientById(req.params.patientId);
     if (!patient) {
@@ -236,7 +239,7 @@ router.post('/:patientId/:type/review', requireAuth, requireRole('doctor'), (req
 
 // ─── GET /api/analysis/stats/agreement ───────────────────────────────
 // Live AI-vs-physician agreement — the Phase 4 metric.
-router.get('/stats/agreement', requireAuth, (req, res) => {
+router.get('/stats/agreement', requireAuth, staffOnly, (req, res) => {
   try {
     res.status(200).json({
       success: true,

@@ -38,8 +38,6 @@ import PatientFormModal from '../components/PatientFormModal';
 import ThemeToggle from '../components/ThemeToggle';
 import LangToggle from '../components/LangToggle';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
-import CriticalAlertBanner from '../components/CriticalAlertBanner';
-import VitalsTrendChart from '../components/VitalsTrendChart';
 import { useLang } from '../i18n/LanguageContext';
 import { dataDictionaryTH } from '../i18n/translations';
 import {
@@ -60,6 +58,7 @@ import {
   submitReview as apiSubmitReview,
   uploadAudio as apiUploadAudio,
   deleteAudio as apiDeleteAudio,
+  sendDeviceCommand as apiSendDeviceCommand,
 } from '../services/api';
 
 /** Queue ordering: urgent first, then anything a doctor has not signed. */
@@ -592,18 +591,15 @@ function Dashboard() {
       setIsTriggeringESP32(true);
       setEsp32TriggerMessage('Sending command to ESP32...');
 
-      const res = await fetch(`${API_URL}/api/device/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_id: 'ESP32-INMP441-A',
-          command: 'record',
-          patient_id: patient.id,
-          type: activeAudioTab
-        })
-      });
+      // Goes through the API client so the session token is attached —
+      // this endpoint now requires an authenticated user or a device key
+      const data = await apiSendDeviceCommand({
+        deviceId: 'ESP32-INMP441-A',
+        command: 'record',
+        patientId: patient.id,
+        type: activeAudioTab,
+      }).catch((err) => ({ success: false, error: err.message }));
 
-      const data = await res.json();
       if (data.success) {
         setEsp32TriggerMessage('Waiting for ESP32 to record (this takes ~5s)...');
 
@@ -686,19 +682,13 @@ function Dashboard() {
           const mins = Math.floor(wav.durationSec / 60);
           const secs = Math.round(wav.durationSec % 60);
 
-          const res = await fetch(`${API_URL}/api/device/audio`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              device_id: 'BROWSER-MIC',
-              patient_id: patient.id,
-              type: activeAudioTab,
-              duration: `${mins}:${String(secs).padStart(2, '0')}`,
-              audio_base64: wav.base64,
-              mime_type: 'audio/wav',
-            })
+          const data = await apiUploadAudio({
+            patientId: patient.id,
+            type: activeAudioTab,
+            audioBase64: wav.base64,
+            duration: `${mins}:${String(secs).padStart(2, '0')}`,
+            deviceId: 'BROWSER-MIC',
           });
-          const data = await res.json();
           if (data.success) {
             // The backend screens on upload — pick the result straight up
             if (data.analysis) {
@@ -1065,7 +1055,9 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
-      <CriticalAlertBanner patients={patients} onSelectPatient={setSelectedPatientId} />
+      {/* Urgency is carried by the AI triage badge and the queue ordering,
+          which are driven by the analysis engine. A second banner running
+          its own vitals-only rule could contradict them. */}
 
       {/* ─── 1. TOP BAR ──────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
@@ -1491,8 +1483,6 @@ function Dashboard() {
                 <p className="microlabel">{t('vitals.reserved')}</p>
                 <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">{t('vitals.reservedNote')}</p>
               </div>
-
-              <VitalsTrendChart patient={patient} />
             </div>
           </div>
 
