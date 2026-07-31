@@ -101,9 +101,42 @@ app.get('/api/health', (req, res) => {
     success: true,
     service: 'WellSim IoT Healthcare API',
     version: '1.0.0',
+    build: '2026-07-31-v2',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
+    routes: {
+      patients: patientRoutes.stack
+        .filter(r => r.route)
+        .map(r => `${Object.keys(r.route.methods).join(',').toUpperCase()} ${r.route.path}`),
+    },
   });
+});
+
+// Debug: list all registered routes (unauthenticated, safe to remove in prod)
+app.get('/api/debug/routes', (req, res) => {
+  const routes = [];
+  app._router.stack.forEach((middleware) => {
+    if (middleware.route) {
+      routes.push({
+        method: Object.keys(middleware.route.methods).join(',').toUpperCase(),
+        path: middleware.route.path,
+      });
+    } else if (middleware.name === 'router' && middleware.handle.stack) {
+      const prefix = middleware.regexp.source
+        .replace('^\\/','/')
+        .replace('\\/?(?=\\/|$)','')
+        .replace(/\\\//g, '/');
+      middleware.handle.stack.forEach((handler) => {
+        if (handler.route) {
+          routes.push({
+            method: Object.keys(handler.route.methods).join(',').toUpperCase(),
+            path: prefix + handler.route.path,
+          });
+        }
+      });
+    }
+  });
+  res.json({ success: true, routes });
 });
 
 // ─── 404 Handler ────────────────────────────────────────────────────
