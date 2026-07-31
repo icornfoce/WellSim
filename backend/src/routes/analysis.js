@@ -237,6 +237,53 @@ router.post('/:patientId/:type/review', requireAuth, requireRole('doctor'), (req
   }
 });
 
+// ─── GET /api/analysis/my ─────────────────────────────────────────────
+// A patient's own AI analyses + review status. Patient accounts only.
+// Deliberately limited: no raw confidence scores or internal biomarkers
+// are surfaced — only the label, triage level, and review state.
+router.get('/my', requireAuth, (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({
+        success: false,
+        error: 'This endpoint is for patient accounts only.',
+      });
+    }
+    const { getPatientByUserId } = require('../services/dbService');
+    const patient = getPatientByUserId(req.user.userId);
+    if (!patient) {
+      return res.status(200).json({ success: true, analyses: {} });
+    }
+
+    // Strip internal fields; keep only what the patient should see
+    const safe = {};
+    for (const type of VALID_TYPES) {
+      const a = patient.analyses?.[type];
+      if (!a) continue;
+      const review = a.review || {};
+      safe[type] = {
+        label: a.label || null,
+        triage: a.triage?.level || null,
+        review: {
+          status: review.status || 'pending',
+          doctorName: review.doctorName || null,
+          finalLabel: review.finalLabel || null,
+          finalTriage: review.finalTriage || null,
+          note: (review.status === 'confirmed' || review.status === 'modified' || review.status === 'rejected')
+            ? (review.note || null)
+            : null,
+          reviewedAt: review.reviewedAt || null,
+        },
+      };
+    }
+
+    res.status(200).json({ success: true, analyses: safe });
+  } catch (error) {
+    console.error('❌ Error fetching patient analyses:', error.message);
+    res.status(500).json({ success: false, error: 'Internal server error.' });
+  }
+});
+
 // ─── GET /api/analysis/stats/agreement ───────────────────────────────
 // Live AI-vs-physician agreement — the Phase 4 metric.
 router.get('/stats/agreement', requireAuth, staffOnly, (req, res) => {

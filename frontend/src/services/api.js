@@ -420,6 +420,20 @@ export async function fetchAnalyses(patientId) {
 }
 
 /**
+ * Fetch the current patient's own AI analyses with review status.
+ * Patient accounts only — returns { success, analyses } where analyses
+ * is keyed by type ('lung'|'heart'|'cough').
+ *
+ * @returns {Promise<Object>} { success, analyses }
+ */
+export async function fetchMyAnalyses() {
+  return unwrap(await fetch(`${ANALYSIS_BASE}/my`, {
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  }));
+}
+
+/**
  * Layer 2 — a physician's verdict on an AI result.
  * The server rejects this with 403 for any non-doctor account.
  *

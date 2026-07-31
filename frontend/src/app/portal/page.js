@@ -20,6 +20,7 @@ import {
   updateMyRecord,
   uploadAudio as apiUploadAudio,
   deleteAudio as apiDeleteAudio,
+  fetchMyAnalyses,
   API_URL,
 } from '../../services/api';
 import { encodeWavFromBlob, formatDuration, ACCEPTED_AUDIO } from '../../lib/audioEncoder';
@@ -83,6 +84,7 @@ export default function PortalPage() {
   const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
   const [record, setRecord] = useState(null);
+  const [analyses, setAnalyses] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -367,8 +369,12 @@ export default function PortalPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetchMyRecord();
-      setRecord(res.patient);
+      const [recRes, anRes] = await Promise.all([
+        fetchMyRecord(),
+        fetchMyAnalyses().catch(() => ({ analyses: {} })),
+      ]);
+      setRecord(recRes.patient);
+      setAnalyses(anRes.analyses || {});
     } catch (err) {
       setError(err.message || t('portal.error'));
     } finally {
@@ -965,6 +971,156 @@ export default function PortalPage() {
                   })}
                 </div>
               </div>
+            </div>
+
+            {/* ── Section 04: Screening results & physician review ──── */}
+            <div className="card p-5 will-fade-up animate-delay-400">
+              <SectionHead index="04" title={t('portal.review.title')} />
+
+              {Object.keys(analyses).length === 0 ? (
+                <div className="mt-4 text-center py-6 border border-dashed border-hairline-strong dark:border-coal-600 rounded">
+                  <p className="microlabel">{t('portal.review.noAnalysis')}</p>
+                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1">
+                    {t('portal.review.noAnalysisDetail')}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 flex flex-col gap-3">
+                  {['lung', 'heart', 'cough'].map((type) => {
+                    const a = analyses[type];
+                    const audioLog = record?.audioLogs?.[type];
+
+                    // No audio at all → no analysis possible
+                    if (!audioLog?.available && !a) {
+                      return null;
+                    }
+
+                    const reviewStatus = a?.review?.status || 'pending';
+                    const isConfirmed = reviewStatus === 'confirmed';
+                    const isModified  = reviewStatus === 'modified';
+                    const isRejected  = reviewStatus === 'rejected';
+                    const isDoctorSigned = isConfirmed || isModified || isRejected;
+
+                    const statusCfg = {
+                      pending:   { label: t('portal.review.pending'),   dot: 'bg-risk-mod dark:bg-risk-modd',   text: 'text-risk-mod dark:text-risk-modd' },
+                      confirmed: { label: t('portal.review.confirmed'), dot: 'bg-risk-low dark:bg-risk-lowd',   text: 'text-risk-low dark:text-risk-lowd' },
+                      modified:  { label: t('portal.review.modified'),  dot: 'bg-med-500 dark:bg-med-400',      text: 'text-med-600 dark:text-med-300' },
+                      rejected:  { label: t('portal.review.rejected'),  dot: 'bg-muted/60 dark:bg-chalk-muted/60', text: 'text-muted dark:text-chalk-muted' },
+                    };
+                    const cfg = statusCfg[reviewStatus] || statusCfg.pending;
+
+                    const triageLabel = (level) => {
+                      if (level === 'red')    return { text: t('portal.review.triageRed'),    cls: 'text-risk-high dark:text-risk-highd' };
+                      if (level === 'yellow') return { text: t('portal.review.triageYellow'), cls: 'text-risk-mod dark:text-risk-modd' };
+                      if (level === 'green')  return { text: t('portal.review.triageGreen'),  cls: 'text-risk-low dark:text-risk-lowd' };
+                      return { text: '—', cls: 'text-muted dark:text-chalk-muted' };
+                    };
+
+                    // Display label/triage: doctor's word > AI word
+                    const displayLabel  = (isModified || isConfirmed) ? (a.review.finalLabel  || a.label)  : (isRejected ? null : a?.label);
+                    const displayTriage = (isModified || isConfirmed) ? (a.review.finalTriage || a.triage)  : (isRejected ? null : a?.triage);
+                    const triage = triageLabel(displayTriage);
+
+                    const reviewedAtStr = a?.review?.reviewedAt
+                      ? new Date(a.review.reviewedAt).toLocaleDateString(
+                          lang === 'th' ? 'th-TH' : 'en-GB',
+                          { day: '2-digit', month: 'short', year: 'numeric' }
+                        )
+                      : null;
+
+                    return (
+                      <div key={type} className="border border-hairline dark:border-coal-700 rounded overflow-hidden">
+                        {/* Header row */}
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-surface dark:bg-coal-900 border-b border-hairline dark:border-coal-700">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                            <p className="text-xs font-semibold text-ink dark:text-chalk capitalize">
+                              {t('audio.' + type)}
+                            </p>
+                          </div>
+                          <span className={`font-mono text-[10px] font-semibold ${cfg.text}`}>
+                            {cfg.label}
+                          </span>
+                        </div>
+
+                        {/* Body */}
+                        <div className="px-4 py-3 bg-paper dark:bg-coal-950 flex flex-col gap-2.5">
+                          {!a ? (
+                            // Audio exists but hasn't been screened yet
+                            <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                              {t('ai.noResult')}
+                            </p>
+                          ) : isRejected ? (
+                            // Doctor rejected the AI result
+                            <div className="flex flex-col gap-1.5">
+                              <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                                {t('ai.aiSaidRejected')}
+                              </p>
+                              {a.review?.note && (
+                                <div className="bg-ink/[0.04] dark:bg-coal-800 rounded px-3 py-2 mt-1">
+                                  <p className="microlabel mb-1">{t('portal.review.doctorNote')}</p>
+                                  <p className="text-xs text-ink/80 dark:text-chalk/80 leading-relaxed">{a.review.note}</p>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            // AI result (+ doctor overlay if signed)
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <p className="microlabel mb-1">
+                                  {isDoctorSigned ? t('portal.review.diagnosis') : t('portal.review.aiResult')}
+                                </p>
+                                <p className="text-sm font-medium text-ink dark:text-chalk">
+                                  {displayLabel || '—'}
+                                </p>
+                                {isModified && a.label && a.label !== displayLabel && (
+                                  <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5 line-through">
+                                    {a.label}
+                                  </p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="microlabel mb-1">{t('portal.review.triage')}</p>
+                                <p className={`text-sm font-semibold ${triage.cls}`}>
+                                  {triage.text}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Doctor sign-off line */}
+                          {isDoctorSigned && a.review?.doctorName && (
+                            <div className="pt-2 mt-1 border-t border-hairline dark:border-coal-700 flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex items-center gap-1 font-mono text-[10px] px-2 py-0.5 rounded-full border ${
+                                isConfirmed
+                                  ? 'border-risk-low/40 text-risk-low dark:text-risk-lowd dark:border-risk-lowd/40 bg-risk-low/[0.06] dark:bg-risk-lowd/[0.07]'
+                                  : isModified
+                                    ? 'border-med-500/40 text-med-600 dark:text-med-300 dark:border-med-400/40 bg-med-500/[0.06]'
+                                    : 'border-muted/30 text-muted dark:text-chalk-muted bg-hairline/50 dark:bg-coal-800'
+                              }`}>
+                                {isConfirmed ? '✓' : isModified ? '✎' : '✕'}
+                                &nbsp;{a.review.doctorName}
+                              </span>
+                              {reviewedAtStr && (
+                                <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                                  {t('portal.review.reviewedAt')} {reviewedAtStr}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Pending notice */}
+                          {!isDoctorSigned && a && reviewStatus === 'pending' && (
+                            <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 leading-relaxed">
+                              {t('portal.review.pendingDetail')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
