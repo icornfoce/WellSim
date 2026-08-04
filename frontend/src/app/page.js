@@ -961,7 +961,17 @@ function Dashboard() {
                     ? 'bg-med-500 dark:bg-med-300 animate-blink'
                     : 'bg-risk-high dark:bg-risk-highd'
                 }`} />
-                {deviceStatus?.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
+                {deviceStatus?.status === 'online'
+                  ? t('header.iotOnline')
+                  : deviceStatus?.last_seen_ago_ms > 0 && deviceStatus.last_seen_ago_ms < 3_600_000
+                    ? (() => {
+                        const mins = Math.floor(deviceStatus.last_seen_ago_ms / 60_000);
+                        return lang === 'th'
+                          ? `IOT · เห็นล่าสุด ${mins > 0 ? `${mins}น.` : '<1น.'} ที่แล้ว`
+                          : `IOT · last seen ${mins > 0 ? `${mins}m` : '<1m'} ago`;
+                      })()
+                  : t('header.iotOffline')
+                }
               </span>
               <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
               <span className="tabular-nums text-ink dark:text-chalk">
@@ -1082,7 +1092,17 @@ function Dashboard() {
                   ? 'bg-med-500 dark:bg-med-300 animate-blink'
                   : 'bg-risk-high dark:bg-risk-highd'
               }`} />
-              {deviceStatus?.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
+              {deviceStatus?.status === 'online'
+                ? t('header.iotOnline')
+                : deviceStatus?.last_seen_ago_ms > 0 && deviceStatus.last_seen_ago_ms < 3_600_000
+                  ? (() => {
+                      const mins = Math.floor(deviceStatus.last_seen_ago_ms / 60_000);
+                      return lang === 'th'
+                        ? `IOT · เห็นล่าสุด ${mins > 0 ? `${mins}น.` : '<1น.'} ที่แล้ว`
+                        : `IOT · last seen ${mins > 0 ? `${mins}m` : '<1m'} ago`;
+                    })()
+                  : t('header.iotOffline')
+              }
             </span>
             <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
             <span className="tabular-nums text-ink dark:text-chalk">

@@ -91,16 +91,65 @@ function getLatestData(deviceId) {
 /**
  * Determine device connection status.
  * Online if data received within DEVICE_OFFLINE_THRESHOLD_MS, otherwise Offline.
- * 
+ *
+ * Falls back to the persisted db.readings log when the in-memory store
+ * is empty (e.g. after a Render cold-start / free-tier sleep wake-up).
+ * Without this, the dashboard always showed IOT OFFLINE on first load
+ * even though the device had been posting data minutes before the
+ * server went to sleep.
+ *
  * @param {string} [deviceId] - Optional device ID filter
  * @returns {Object|Object[]|null}
  */
 function getDeviceStatus(deviceId) {
   const now = Date.now();
 
+  // Restore the last known reading from the persisted store when the
+  // in-memory Map was wiped by a restart/sleep.
+  if (deviceStore.size === 0) {
+    try {
+      const db = dbService.readDBForDevice();
+      if (db && Array.isArray(db.readings) && db.readings.length > 0) {
+        for (const reading of db.readings) {
+          const id = reading.device_id || 'unknown';
+          if (!deviceStore.has(id)) {
+            deviceStore.set(id, {
+              latest: reading,
+              history: [reading],
+              firstSeen: reading._receivedAt || new Date().toISOString(),
+              lastSeen: reading._receivedAt || new Date().toISOString(),
+            });
+          } else {
+            const entry = deviceStore.get(id);
+            // Keep the most-recent reading per device
+            const t = new Date(reading._receivedAt || 0).getTime();
+            const cur = new Date(entry.latest._receivedAt || 0).getTime();
+            if (t > cur) {
+              entry.latest = reading;
+              entry.lastSeen = reading._receivedAt;
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Silently ignore — the store stays empty, device shows offline
+    }
+  }
+
   const buildStatus = (id, device) => {
-    const lastTimestamp = device.latest?._serverTimestamp || 0;
+    // Use the ISO timestamp from the reading itself if the numeric
+    // _serverTimestamp was lost (readings loaded from disk lack it).
+    const lastTimestamp =
+      device.latest?._serverTimestamp ||
+      new Date(device.latest?._receivedAt || 0).getTime() ||
+      0;
     const elapsed = now - lastTimestamp;
+    // Use a more generous threshold on Render: the free-tier server
+    // may sleep for up to 15 minutes between requests, so 30 s is
+    // always "offline" even when the device has been posting normally.
+    // 10 minutes gives a realistic picture of last-known activity.
+    const threshold = config.DEVICE_OFFLINE_THRESHOLD_MS_EXTENDED ||
+                      config.DEVICE_OFFLINE_THRESHOLD_MS * 20; // default ×20 = 10 min
     const isOnline = elapsed <= config.DEVICE_OFFLINE_THRESHOLD_MS;
 
     return {
@@ -111,6 +160,9 @@ function getDeviceStatus(deviceId) {
       readings_count: device.history.length,
       elapsed_ms: elapsed,
       threshold_ms: config.DEVICE_OFFLINE_THRESHOLD_MS,
+      // Extra flag the dashboard can use to show a "last seen X ago"
+      // message instead of a hard offline indicator after a cold start
+      last_seen_ago_ms: elapsed,
     };
   };
 

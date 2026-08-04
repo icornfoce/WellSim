@@ -1015,6 +1015,25 @@ function getAgreementStats() {
   };
 }
 
+/**
+ * Lightweight read used by deviceService to restore the in-memory
+ * store after a cold-start/sleep wake-up. Deliberately skips
+ * runMigrationsOnce so waking the server doesn't trigger schema
+ * migrations for an otherwise idle status poll.
+ *
+ * @returns {{ readings: Object[] }} — only the readings array
+ */
+function readDBForDevice() {
+  try {
+    if (!fs.existsSync(DB_PATH)) return { readings: [] };
+    const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    const db = JSON.parse(raw);
+    return { readings: Array.isArray(db.readings) ? db.readings : [] };
+  } catch {
+    return { readings: [] };
+  }
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -1042,4 +1061,5 @@ module.exports = {
   recomputePatientRisk,
   getFeedback,
   getAgreementStats,
+  readDBForDevice,
 };
