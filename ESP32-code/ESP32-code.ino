@@ -12,7 +12,7 @@ const char* serverUrl = "https://wellsim-backend.onrender.com/api/device/audio";
 const char* cmdUrl = "https://wellsim-backend.onrender.com/api/device/command?device_id=ESP32-INMP441-A";
 
 // ⚠️ ใส่ DEVICE_API_KEY ของคุณที่กำหนดไว้บนเซิร์ฟเวอร์ Render (ต้องตรงกัน)
-const char* deviceApiKey = "YOUR_DEVICE_API_KEY_HERE"; 
+const char* deviceApiKey = "4d1f990daf89c6db03665be522925344b002c36374cb1229ea3a5dbedb095fd6"; 
 
 // ─── การตั้งค่า I2S Microphone (INMP441) ──────────────────────────────────
 #define I2S_WS 25
