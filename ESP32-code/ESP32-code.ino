@@ -3,7 +3,6 @@
 #include <WiFiClientSecure.h>
 #include <driver/i2s.h>
 #include <ArduinoJson.h>
-#include "mbedtls/base64.h"
 
 // ─── การตั้งค่า Wi-Fi และเซิร์ฟเวอร์ ──────────────────────────────────────
 const char* ssid = "Micky";          
@@ -11,7 +10,6 @@ const char* password = "021657065";
 const char* serverUrl = "https://wellsim-backend.onrender.com/api/device/audio"; 
 const char* cmdUrl = "https://wellsim-backend.onrender.com/api/device/command?device_id=ESP32-INMP441-A";
 
-// ⚠️ ใส่ DEVICE_API_KEY ของคุณที่กำหนดไว้บนเซิร์ฟเวอร์ Render (ต้องตรงกัน)
 const char* deviceApiKey = "4d1f990daf89c6db03665be522925344b002c36374cb1229ea3a5dbedb095fd6"; 
 
 // ─── การตั้งค่า I2S Microphone (INMP441) ──────────────────────────────────
@@ -21,8 +19,7 @@ const char* deviceApiKey = "4d1f990daf89c6db03665be522925344b002c36374cb1229ea3a
 #define I2S_PORT I2S_NUM_0
 
 const int SAMPLE_RATE = 16000;     
-const float RECORD_TIME_SECONDS = 0.5;
-const size_t PCM_BUFFER_SIZE = (size_t)(SAMPLE_RATE * RECORD_TIME_SECONDS * sizeof(int16_t)); 
+const float RECORD_TIME_SECONDS = 5.0; // 🚀 เวลาอัดเสียง (วินาที)
 
 struct WAVHeader {
   char chunkID[4] = {'R', 'I', 'F', 'F'};
@@ -40,61 +37,96 @@ struct WAVHeader {
   uint32_t subchunk2Size;
 };
 
-const size_t TOTAL_WAV_SIZE = sizeof(WAVHeader) + PCM_BUFFER_SIZE;
+// ⚡ Class ช่วยแปลงข้อมูลดิบเป็น Base64 และ Stream ลง Socket โดยใช้ RAM เพียง 512 bytes
+class Base64Streamer {
+private:
+  WiFiClientSecure& client;
+  uint8_t inBuf[3];
+  uint8_t inCount = 0;
+  uint8_t outBuf[512];
+  size_t outIdx = 0;
 
-// 🔍 ฟังก์ชัน Diagnostic วิเคราะห์ SSL Connection & Memory Heap
+  void encode3() {
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    uint32_t b = (inBuf[0] << 16) | (inBuf[1] << 8) | inBuf[2];
+    outBuf[outIdx++] = b64[(b >> 18) & 0x3F];
+    outBuf[outIdx++] = b64[(b >> 12) & 0x3F];
+    outBuf[outIdx++] = b64[(b >> 6) & 0x3F];
+    outBuf[outIdx++] = b64[b & 0x3F];
+    inCount = 0;
+
+    if (outIdx >= sizeof(outBuf) - 4) {
+      flushNetwork();
+    }
+  }
+
+  void flushNetwork() {
+    if (outIdx > 0) {
+      client.write(outBuf, outIdx);
+      outIdx = 0;
+    }
+  }
+
+public:
+  Base64Streamer(WiFiClientSecure& c) : client(c) {}
+
+  void writeByte(uint8_t b) {
+    inBuf[inCount++] = b;
+    if (inCount == 3) {
+      encode3();
+    }
+  }
+
+  void writeBytes(const uint8_t* data, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+      writeByte(data[i]);
+    }
+  }
+
+  void finish() {
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (inCount == 1) {
+      uint32_t b = (inBuf[0] << 16);
+      outBuf[outIdx++] = b64[(b >> 18) & 0x3F];
+      outBuf[outIdx++] = b64[(b >> 12) & 0x3F];
+      outBuf[outIdx++] = '=';
+      outBuf[outIdx++] = '=';
+    } else if (inCount == 2) {
+      uint32_t b = (inBuf[0] << 16) | (inBuf[1] << 8);
+      outBuf[outIdx++] = b64[(b >> 18) & 0x3F];
+      outBuf[outIdx++] = b64[(b >> 12) & 0x3F];
+      outBuf[outIdx++] = b64[(b >> 6) & 0x3F];
+      outBuf[outIdx++] = '=';
+    }
+    inCount = 0;
+    flushNetwork();
+  }
+};
+
 void diagnoseConnection() {
   Serial.println("\n========== CONNECTION DIAGNOSTIC ==========");
   Serial.printf("📊 Free Heap: %d bytes\n", ESP.getFreeHeap());
   Serial.printf("📊 Largest Free Block: %d bytes\n", ESP.getMaxAllocHeap());
 
-  // Test 1: DNS Resolution
-  Serial.println("\n[TEST 1] DNS Resolution...");
   IPAddress ip;
   if (WiFi.hostByName("wellsim-backend.onrender.com", ip)) {
     Serial.println("  ✅ DNS OK → " + ip.toString());
   } else {
-    Serial.println("  ❌ DNS FAILED! (ปัญหาที่ DNS ไม่สามารถหา IP ได้)");
+    Serial.println("  ❌ DNS FAILED!");
     return;
   }
 
-  // Test 2: Raw SSL Connection (ไม่ผ่าน HTTPClient)
-  Serial.println("\n[TEST 2] Direct SSL Connection...");
-  Serial.printf("  📊 Free Heap before SSL: %d bytes\n", ESP.getFreeHeap());
-  
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(15000);
   
-  unsigned long start = millis();
   if (client.connect("wellsim-backend.onrender.com", 443)) {
-    Serial.printf("  ✅ SSL OK! (ใช้เวลา %lu ms)\n", millis() - start);
-    Serial.printf("  📊 Free Heap after SSL: %d bytes\n", ESP.getFreeHeap());
-    
-    // Test 3: ส่ง HTTP GET แบบ Manual (พร้อมแนบ Key)
-    Serial.println("\n[TEST 3] Manual HTTP GET /api/device/command...");
-    client.println("GET /api/device/command?device_id=ESP32-INMP441-A HTTP/1.1");
-    client.println("Host: wellsim-backend.onrender.com");
-    client.println("User-Agent: ESP32-Diagnostic");
-    client.printf("X-Device-Key: %s\r\n", deviceApiKey); // แนบ X-Device-Key
-    client.println("Connection: close");
-    client.println();
-    
-    unsigned long timeout = millis() + 10000;
-    while (client.connected() && millis() < timeout) {
-      if (client.available()) {
-        String line = client.readStringUntil('\n');
-        Serial.println("  " + line);
-        if (line.startsWith("{")) break; // พบ JSON body แล้ว
-      }
-    }
+    Serial.println("  ✅ SSL Connection Test Passed!");
     client.stop();
   } else {
-    Serial.printf("  ❌ SSL Connection FAILED! (ใช้เวลา %lu ms)\n", millis() - start);
-    Serial.printf("  📊 Free Heap after attempt: %d bytes\n", ESP.getFreeHeap());
+    Serial.println("  ❌ SSL Connection FAILED!");
   }
-
-  Serial.println("\n========== END DIAGNOSTIC ==========\n");
+  Serial.println("========== END DIAGNOSTIC ==========\n");
 }
 
 void setupI2S() {
@@ -105,8 +137,8 @@ void setupI2S() {
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-    .dma_buf_count = 8,
-    .dma_buf_len = 1024,
+    .dma_buf_count = 4,
+    .dma_buf_len = 512,
     .use_apll = false
   };
 
@@ -125,7 +157,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("\n--- WELLSIM IOT STARTING ---");
+  Serial.println("\n--- WELLSIM REAL-TIME STREAMING STARTING ---");
 
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -136,9 +168,8 @@ void setup() {
   Serial.println("\nWiFi Connected!");
 
   diagnoseConnection();
-
   setupI2S();
-  Serial.println("🟢 [READY] WellSim IoT พร้อมรับคำสั่งอัดเสียงจาก Web Dashboard!");
+  Serial.println("🟢 [READY] WellSim IoT พร้อมสตรีมเสียงความยาวสูงข้าม Cloud!");
 }
 
 void loop() {
@@ -149,154 +180,127 @@ void loop() {
 
   WiFiClientSecure client;
   client.setInsecure();
-  client.setHandshakeTimeout(15);
 
   HTTPClient http;
   
   if (http.begin(client, cmdUrl)) {
     http.setTimeout(15000);
     http.addHeader("User-Agent", "ESP32-HTTPClient");
-    http.addHeader("X-Device-Key", deviceApiKey); // แนบ Key สำหรับตรวจสอบสิทธิ์ฝั่ง GET
+    http.addHeader("X-Device-Key", deviceApiKey);
 
     int httpCode = http.GET();
     
-    if (httpCode > 0) {
-      if (httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
-        
-        DynamicJsonDocument doc(300);
-        DeserializationError err = deserializeJson(doc, payload);
-        
-        if (!err) {
-          String command = doc["command"] | "none";
-          String patientId = doc["patient_id"] | "p1";
-          String audioType = doc["type"] | "lung";
+    if (httpCode == HTTP_CODE_OK) {
+      String payload = http.getString();
+      
+      DynamicJsonDocument doc(300);
+      DeserializationError err = deserializeJson(doc, payload);
+      
+      if (!err) {
+        String command = doc["command"] | "none";
+        String patientId = doc["patient_id"] | "p1";
+        String audioType = doc["type"] | "lung";
 
-          Serial.print("📡 Polling Server... Command: ");
-          Serial.println(command);
+        if (command == "record") {
+          Serial.println("\n🚀 [ACTION] เริ่มกระบวนการ Real-time Recording & Streaming...");
           
-          if (command == "record") {
-            Serial.println("\n🚀 [ACTION] ได้รับคำสั่งอัดเสียงจากหน้าเว็บ!");
-            
-            http.end(); // คืน SSL Resource ของ Polling ก่อน
-            delay(100);
+          http.end(); // ปิด Connection ของ Polling ทันที
+          delay(100);
 
-            Serial.printf("📊 Free Heap ก่อนจอง WAV: %d bytes (Largest Block: %d bytes)\n", 
-                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+          // 1. คำนวณขนาดข้อมูลล่วงหน้า
+          size_t pcmBufferSize = (size_t)(SAMPLE_RATE * RECORD_TIME_SECONDS * sizeof(int16_t));
+          size_t totalWavSize = sizeof(WAVHeader) + pcmBufferSize;
+          size_t base64Len = ((totalWavSize + 2) / 3) * 4;
 
-            // 1. จอง WAV Buffer Dynamic
-            uint8_t* wavBuffer = (uint8_t*)malloc(TOTAL_WAV_SIZE);
-            if (wavBuffer == NULL) {
-              Serial.println("❌ Critical Error: แรมไม่พอสำหรับ WAV Buffer!");
-              return;
-            }
-            Serial.printf("✅ จอง RAM WAV Buffer สำเร็จ (%d bytes)\n", TOTAL_WAV_SIZE);
+          char headerJson[256];
+          snprintf(headerJson, sizeof(headerJson), 
+            "{\"device_id\":\"ESP32-INMP441-A\",\"patient_id\":\"%s\",\"type\":\"%s\",\"duration\":\"0:05\",\"audio_base64\":\"",
+            patientId.c_str(), audioType.c_str());
+          const char* footerJson = "\"}";
 
-            // 2. สร้าง WAV Header
+          size_t totalContentLength = strlen(headerJson) + base64Len + strlen(footerJson);
+
+          // 2. เชื่อมต่อ SSL ไปยัง Server
+          WiFiClientSecure postClient;
+          postClient.setInsecure(); 
+          postClient.setTimeout(30000);
+
+          if (postClient.connect("wellsim-backend.onrender.com", 443)) {
+            Serial.println("📡 เชื่อมต่อ Socket สำเร็จ สตรีม HTTP Header...");
+
+            // 3. ส่ง HTTP Header
+            postClient.println("POST /api/device/audio HTTP/1.1");
+            postClient.println("Host: wellsim-backend.onrender.com");
+            postClient.println("Content-Type: application/json");
+            postClient.printf("X-Device-Key: %s\r\n", deviceApiKey);
+            postClient.printf("Content-Length: %d\r\n", totalContentLength);
+            postClient.println("Connection: close");
+            postClient.println();
+
+            // 4. ส่ง JSON Header
+            postClient.print(headerJson);
+
+            // 5. เตรียมตัว Streaming WAV + I2S Audio
+            Base64Streamer streamer(postClient);
+
             WAVHeader header;
-            header.chunkSize = TOTAL_WAV_SIZE - 8;
-            header.subchunk2Size = PCM_BUFFER_SIZE;
-            memcpy(wavBuffer, &header, sizeof(WAVHeader));
+            header.chunkSize = totalWavSize - 8;
+            header.subchunk2Size = pcmBufferSize;
 
-            // 3. เริ่มอัดเสียงผ่าน I2S
-            Serial.println("🎙️ กำลังบันทึกเสียง...");
-            int16_t* pcm16Bit = (int16_t*)(wavBuffer + sizeof(WAVHeader));
-            size_t samplesRead = 0;
-            size_t totalSamples = (size_t)(SAMPLE_RATE * RECORD_TIME_SECONDS);
-            int32_t i2sBuffer[256];
+            // Stream WAV Header เข้า Socket
+            streamer.writeBytes((uint8_t*)&header, sizeof(WAVHeader));
 
-            while (samplesRead < totalSamples) {
+            // 6. วน Loop อ่านจาก I2S แล้วยิงตรงลง Socket ทันทีขณะอัดเสียง
+            Serial.printf("🎙️ กำลังอัดและสตรีมเสียงสดความยาว %.1f วินาที...\n", RECORD_TIME_SECONDS);
+            
+            size_t totalSamplesToRead = (size_t)(SAMPLE_RATE * RECORD_TIME_SECONDS);
+            size_t samplesReadTotal = 0;
+
+            int32_t i2sBatchBuf[128];
+            int16_t pcmBatchBuf[128];
+
+            while (samplesReadTotal < totalSamplesToRead) {
               size_t bytesRead = 0;
-              i2s_read(I2S_PORT, i2sBuffer, sizeof(i2sBuffer), &bytesRead, portMAX_DELAY);
-              
+              i2s_read(I2S_PORT, i2sBatchBuf, sizeof(i2sBatchBuf), &bytesRead, portMAX_DELAY);
+
               int samplesInBatch = bytesRead / 4;
               for (int i = 0; i < samplesInBatch; i++) {
-                if (samplesRead < totalSamples) {
-                  pcm16Bit[samplesRead++] = (int16_t)(i2sBuffer[i] >> 14); 
+                if (samplesReadTotal < totalSamplesToRead) {
+                  pcmBatchBuf[i] = (int16_t)(i2sBatchBuf[i] >> 14);
+                  samplesReadTotal++;
+                }
+              }
+
+              // สตรีม batch PCM ที่ได้ลง SSL Socket
+              streamer.writeBytes((uint8_t*)pcmBatchBuf, samplesInBatch * sizeof(int16_t));
+            }
+
+            // จบการสตรีมส่วนเสียง
+            streamer.finish();
+
+            // 7. ส่ง JSON Footer
+            postClient.print(footerJson);
+
+            Serial.println("✅ อัดเสียงและส่งข้อมูลขึ้น Cloud สำเร็จ!");
+
+            // 8. รอรับคำตอบจากเซิร์ฟเวอร์
+            unsigned long respTimeout = millis() + 15000;
+            while (postClient.connected() && millis() < respTimeout) {
+              if (postClient.available()) {
+                String line = postClient.readStringUntil('\n');
+                if (line.startsWith("HTTP/1.1")) {
+                  Serial.println(" Response: " + line);
                 }
               }
             }
-            Serial.println("✅ บันทึกเสียงเสร็จสิ้น!");
-
-            // 4. แปลงเป็น Base64
-            Serial.println("🔄 กำลังแปลง Base64...");
-            size_t base64Len = 0;
-            mbedtls_base64_encode(NULL, 0, &base64Len, wavBuffer, TOTAL_WAV_SIZE);
-            
-            char* base64Str = (char*)malloc(base64Len + 1);
-            if (base64Str == NULL) {
-              Serial.println("❌ Error: แรมไม่พอสำหรับ Base64!");
-              free(wavBuffer);
-              return;
-            }
-
-            mbedtls_base64_encode((unsigned char*)base64Str, base64Len + 1, &base64Len, wavBuffer, TOTAL_WAV_SIZE);
-            base64Str[base64Len] = '\0';
-
-            // คืน RAM WAV Buffer ทันทีเพื่อเปิดพื้นที่ RAM ให้ SSL POST
-            free(wavBuffer);
-
-            // 5. ส่ง HTTP POST ไปที่ Render Backend
-            Serial.println("📡 กำลังยิงข้อมูลขึ้น Render Server...");
-            
-            WiFiClientSecure postClient;
-            postClient.setInsecure(); 
-            postClient.setHandshakeTimeout(20);
-            
-            HTTPClient postHttp;
-            if (postHttp.begin(postClient, serverUrl)) {
-              postHttp.setTimeout(30000); 
-              postHttp.addHeader("Content-Type", "application/json");
-              postHttp.addHeader("X-Device-Key", deviceApiKey); // แนบ Key สำหรับตรวจสอบสิทธิ์ฝั่ง POST
-
-              // สร้าง C-String Payload รวมโดยตรง
-              char headerJson[256];
-              snprintf(headerJson, sizeof(headerJson), 
-                "{\"device_id\":\"ESP32-INMP441-A\",\"patient_id\":\"%s\",\"type\":\"%s\",\"duration\":\"0:02\",\"audio_base64\":\"",
-                patientId.c_str(), audioType.c_str());
-              
-              const char* footerJson = "\"}";
-              size_t totalJsonLen = strlen(headerJson) + base64Len + strlen(footerJson);
-
-              char* fullJsonPayload = (char*)malloc(totalJsonLen + 1);
-              if (fullJsonPayload != NULL) {
-                strcpy(fullJsonPayload, headerJson);
-                strcat(fullJsonPayload, base64Str);
-                strcat(fullJsonPayload, footerJson);
-
-                free(base64Str); // คืน RAM Base64 ทันที
-
-                int postCode = postHttp.POST((uint8_t*)fullJsonPayload, totalJsonLen);
-                
-                free(fullJsonPayload); // คืน RAM Payload ทันที
-
-                if (postCode > 0) {
-                  Serial.println(" Response Code: " + String(postCode));
-                  Serial.println(" Response Body: " + postHttp.getString());
-                } else {
-                  Serial.printf("❌ HTTP POST Error Code: %d (%s)\n", postCode, postHttp.errorToString(postCode).c_str());
-                }
-              } else {
-                Serial.println("❌ Error: แรมไม่พอสำหรับสร้าง JSON Payload!");
-                free(base64Str);
-              }
-
-              postHttp.end();
-            } else {
-              Serial.println("❌ Unable to connect to POST URL");
-              free(base64Str);
-            }
+            postClient.stop();
+          } else {
+            Serial.println("❌ Direct SSL Connection สำหรับ Stream POST ล้มเหลว!");
           }
-        } else {
-          Serial.println("❌ JSON Parse Failed!");
         }
       }
-    } else {
-      Serial.printf("❌ HTTP GET Error Code: %d (%s)\n", httpCode, http.errorToString(httpCode).c_str());
     }
     http.end();
-  } else {
-    Serial.println("❌ Unable to connect to GET URL");
   }
 
   delay(3000); 
