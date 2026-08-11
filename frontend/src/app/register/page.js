@@ -225,7 +225,7 @@ export default function RegisterPage() {
                   className="field"
                   autoComplete="off"
                 />
-                <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5 leading-relaxed">
+                <p className="note-sm mt-1.5">
                   {t('register.staffCodeNote')}
                 </p>
               </div>
@@ -298,7 +298,7 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] mt-5">
+        <p className="microlabel text-center mt-5">
           {t('login.footer')}
         </p>
       </div>

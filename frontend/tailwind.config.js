@@ -45,13 +45,17 @@ module.exports = {
           700: '#0A5F4E',
           950: '#0A2620',
         },
-        // Risk semantics (muted, print-like)
+        // Risk semantics (muted, print-like). Every light-theme value
+        // clears 4.5:1 on BOTH light surfaces — cards (#FFFFFF) and the
+        // page (#F6F6F4). `mod` was #A97B22 and landed at 3.8:1, which
+        // is not good enough for the label that says a reading is out
+        // of range.
         risk: {
-          high:  '#C4453C',
+          high:  '#C4453C', // 4.96 : 1 on #FFF · 4.75 : 1 on #F6F6F4
           highd: '#E06A5F',
-          mod:   '#A97B22',
+          mod:   '#8E661A', // 5.16 : 1 on #FFF · 4.77 : 1 on #F6F6F4
           modd:  '#D9A44A',
-          low:   '#2F7D5F',
+          low:   '#2F7D5F', // 5.03 : 1 on #FFF · 4.81 : 1 on #F6F6F4
           lowd:  '#57A886',
         },
       },

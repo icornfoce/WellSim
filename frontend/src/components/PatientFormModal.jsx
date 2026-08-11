@@ -317,7 +317,7 @@ export default function PatientFormModal({
                   />
                 </div>
               </div>
-              <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2.5">
+              <p className="note-sm mt-2.5">
                 {t('modal.note')}
               </p>
             </div>

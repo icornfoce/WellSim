@@ -28,51 +28,7 @@ import {
 } from 'lucide-react';
 import SpectrogramView from './SpectrogramView';
 import { useLang } from '../i18n/LanguageContext';
-
-/** Classification labels the engine can emit, with clinical wording. */
-const LABEL_TEXT = {
-  en: {
-    normal_breath_sounds: 'Normal breath sounds',
-    wheeze: 'Wheeze',
-    fine_crackles: 'Fine crackles',
-    coarse_crackles: 'Coarse crackles',
-    wheeze_and_crackles: 'Wheeze with crackles',
-    regular_rhythm: 'Regular rhythm',
-    irregular_rhythm: 'Irregular rhythm',
-    irregular_rhythm_with_murmur_signal: 'Irregular rhythm with murmur',
-    murmur_signal_present: 'Murmur signal present',
-    tachycardia_signal: 'Fast rate (tachycardia signal)',
-    bradycardia_signal: 'Slow rate (bradycardia signal)',
-    dry_cough: 'Dry cough',
-    productive_cough: 'Productive cough',
-    no_cough_detected: 'No cough detected',
-    inconclusive: 'Inconclusive',
-  },
-  th: {
-    normal_breath_sounds: 'เสียงหายใจปกติ',
-    wheeze: 'เสียงหวีด (Wheeze)',
-    fine_crackles: 'เสียงกรอบแกรบละเอียด (Fine crackles)',
-    coarse_crackles: 'เสียงกรอบแกรบหยาบ (Coarse crackles)',
-    wheeze_and_crackles: 'เสียงหวีดร่วมกับกรอบแกรบ',
-    regular_rhythm: 'จังหวะหัวใจสม่ำเสมอ',
-    irregular_rhythm: 'จังหวะหัวใจไม่สม่ำเสมอ',
-    irregular_rhythm_with_murmur_signal: 'จังหวะไม่สม่ำเสมอร่วมกับเสียงฟู่',
-    murmur_signal_present: 'พบสัญญาณเสียงฟู่ (Murmur)',
-    tachycardia_signal: 'อัตราการเต้นเร็ว',
-    bradycardia_signal: 'อัตราการเต้นช้า',
-    dry_cough: 'ไอแห้ง',
-    productive_cough: 'ไอมีเสมหะ',
-    no_cough_detected: 'ไม่พบเสียงไอ',
-    inconclusive: 'สรุปผลไม่ได้',
-  },
-};
-
-/** Labels a doctor may choose when overriding, grouped by recording type. */
-const OVERRIDE_OPTIONS = {
-  lung: ['normal_breath_sounds', 'wheeze', 'fine_crackles', 'coarse_crackles', 'wheeze_and_crackles', 'inconclusive'],
-  heart: ['regular_rhythm', 'irregular_rhythm', 'murmur_signal_present', 'irregular_rhythm_with_murmur_signal', 'tachycardia_signal', 'bradycardia_signal', 'inconclusive'],
-  cough: ['no_cough_detected', 'dry_cough', 'productive_cough', 'inconclusive'],
-};
+import { OVERRIDE_OPTIONS, clinicalLabel } from '../i18n/clinicalLabels';
 
 const TRIAGE = {
   red:    { dot: 'bg-risk-high dark:bg-risk-highd',  text: 'text-risk-high dark:text-risk-highd',  ring: 'border-risk-high/40 dark:border-risk-highd/40', bg: 'bg-risk-high/[0.06] dark:bg-risk-highd/[0.09]' },
@@ -98,8 +54,7 @@ export default function AIAnalysisPanel({
   const [overrideTriage, setOverrideTriage] = useState('');
   const [error, setError] = useState('');
 
-  const labelText = (key) =>
-    LABEL_TEXT[lang]?.[key] || LABEL_TEXT.en[key] || String(key || '').replace(/_/g, ' ');
+  const labelText = (key) => clinicalLabel(key, lang);
 
   const resetForm = () => {
     setMode(null);
@@ -137,9 +92,7 @@ export default function AIAnalysisPanel({
     return (
       <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-7 px-4 text-center">
         <p className="microlabel">{t('ai.noResult')}</p>
-        <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2 max-w-md mx-auto leading-relaxed">
-          {t('ai.noResultDetail')}
-        </p>
+        <p className="note mt-2 max-w-md mx-auto">{t('ai.noResultDetail')}</p>
         <button onClick={onRun} disabled={running} className="btn-ink mt-4 disabled:opacity-50">
           <RefreshCw className={`w-3.5 h-3.5 ${running ? 'animate-spin' : ''}`} />
           {running ? t('ai.running') : t('ai.run')}
@@ -158,9 +111,7 @@ export default function AIAnalysisPanel({
             <p className={`text-xs font-semibold ${TRIAGE.yellow.text}`}>
               {t('ai.cannotAnalyse')} · {analysis.error}
             </p>
-            <p className="text-xs text-ink/80 dark:text-chalk/80 mt-1.5 leading-relaxed">
-              {analysis.message}
-            </p>
+            <p className="prose-clinical mt-1.5">{analysis.message}</p>
             <button onClick={onRun} disabled={running} className="btn-line mt-3 !py-1.5">
               <RefreshCw className={`w-3 h-3 ${running ? 'animate-spin' : ''}`} /> {t('ai.retry')}
             </button>
@@ -216,15 +167,13 @@ export default function AIAnalysisPanel({
             {review.status === 'rejected' && t('ai.statusRejected')}
           </p>
           {isReviewed && (
-            <p className="text-[11px] text-ink/75 dark:text-chalk/75 mt-1 leading-relaxed">
+            <p className="prose-clinical mt-1">
               {review.doctorName} · {new Date(review.reviewedAt).toLocaleString()}
-              {review.note && <span className="block mt-0.5 italic">“{review.note}”</span>}
+              {review.note && <span className="block mt-1 italic">“{review.note}”</span>}
             </p>
           )}
           {!isReviewed && (
-            <p className="text-[11px] text-muted dark:text-chalk-muted mt-1 leading-relaxed">
-              {t('ai.pendingDetail')}
-            </p>
+            <p className="note mt-1">{t('ai.pendingDetail')}</p>
           )}
         </div>
       </div>
@@ -240,7 +189,7 @@ export default function AIAnalysisPanel({
               {labelText(shownLabel)}
             </p>
             {review.finalLabel && review.finalLabel !== analysis.label && (
-              <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-1.5">
+              <p className="note-sm mt-1.5">
                 {t('ai.aiOriginally')}: {labelText(analysis.label)} ({confidencePct}%)
               </p>
             )}
@@ -279,7 +228,7 @@ export default function AIAnalysisPanel({
         {(analysis.triage?.reasons || []).length > 0 && (
           <ul className="mt-3 space-y-1">
             {analysis.triage.reasons.map((r, i) => (
-              <li key={i} className="flex gap-2 text-[11px] text-ink/75 dark:text-chalk/75 leading-relaxed">
+              <li key={i} className="flex gap-2 prose-clinical">
                 <span className={`shrink-0 ${tri.text}`}>·</span>
                 <span>{r}</span>
               </li>
@@ -302,10 +251,10 @@ export default function AIAnalysisPanel({
         <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
           {(analysis.evidence || []).map((line, i) => (
             <li key={i} className="flex items-start gap-3 py-2">
-              <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
+              <span className="list-index w-5 shrink-0 pt-0.5">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{line}</span>
+              <span className="prose-clinical">{line}</span>
             </li>
           ))}
         </ul>
@@ -318,11 +267,11 @@ export default function AIAnalysisPanel({
           {(analysis.differentials || []).length ? (
             <ul className="mt-2 space-y-1">
               {analysis.differentials.map((d, i) => (
-                <li key={i} className="text-xs text-ink/85 dark:text-chalk/85 leading-relaxed">— {d}</li>
+                <li key={i} className="prose-clinical">— {d}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted dark:text-chalk-muted mt-2">{t('ai.noDifferentials')}</p>
+            <p className="note mt-2">{t('ai.noDifferentials')}</p>
           )}
         </div>
 
@@ -338,7 +287,7 @@ export default function AIAnalysisPanel({
               style={{ width: `${qualityPct}%` }}
             />
           </div>
-          <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2 leading-relaxed">
+          <p className="datum mt-2 block leading-relaxed">
             {analysis.quality?.duration}s · {t('ai.peak')} {analysis.quality?.peakAmplitude}
             {(analysis.quality?.issues || []).length > 0 && (
               <span className="block text-risk-mod dark:text-risk-modd mt-1">
@@ -422,13 +371,11 @@ export default function AIAnalysisPanel({
                     placeholder={t('ai.notePlaceholder')}
                     className="field resize-none"
                   />
-                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1.5">
-                    {t('ai.feedbackNote')}
-                  </p>
+                  <p className="note-sm mt-1.5">{t('ai.feedbackNote')}</p>
                 </div>
 
                 {error && (
-                  <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
+                  <p className="note !text-risk-high dark:!text-risk-highd">{error}</p>
                 )}
 
                 <div className="flex gap-2">
@@ -445,23 +392,19 @@ export default function AIAnalysisPanel({
             )}
 
             {isReviewed && mode === null && (
-              <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2.5">
-                {t('ai.reReview')}
-              </p>
+              <p className="note-sm mt-2.5">{t('ai.reReview')}</p>
             )}
           </>
         ) : (
           <div className="flex items-start gap-2.5">
             <Stethoscope className="w-3.5 h-3.5 shrink-0 mt-0.5 text-muted dark:text-chalk-muted" />
-            <p className="text-[11px] text-muted dark:text-chalk-muted leading-relaxed">
-              {t('ai.nurseNotice')}
-            </p>
+            <p className="note">{t('ai.nurseNotice')}</p>
           </div>
         )}
       </div>
 
       {/* ─── Provenance ───────────────────────────────────────────── */}
-      <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 leading-relaxed pt-1">
+      <p className="datum pt-1 block leading-relaxed">
         {analysis.modelVersion} · {analysis.method} · {analysis.processingMs}ms ·{' '}
         {new Date(analysis.analyzedAt).toLocaleString()}
         <button

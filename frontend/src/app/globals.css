@@ -47,8 +47,18 @@
   }
 
   :focus-visible {
-    outline: 1px solid #129077;
+    outline: 2px solid #129077;
     outline-offset: 2px;
+  }
+
+  .dark :focus-visible {
+    outline-color: #5FC7B2;
+  }
+
+  /* Thai needs more leading than Latin at the same size — the tone
+     marks and vowels sit above and below the line. */
+  :lang(th) {
+    line-height: 1.7;
   }
 
   ::-webkit-scrollbar {
@@ -82,9 +92,53 @@
            dark:bg-coal-900 dark:border-coal-700;
   }
 
-  /* Micro label — the system's typographic signature */
+  /* Micro label — the system's typographic signature.
+     Reserved for one- to three-word labels above a value. Never for
+     sentences: 10px uppercase at 0.14em tracking is a sign, not prose. */
   .microlabel {
     @apply font-mono text-micro uppercase text-muted dark:text-chalk-muted;
+  }
+
+  /* ── The three reading sizes ──────────────────────────────────────
+     Hierarchy comes from size and weight, never from fading text out.
+     Every tone below clears 4.5:1 on its own surface, which the old
+     /50–/70 opacity ladder did not: at 60% the secondary grey landed
+     around 2.7:1 and the helper text under it was effectively
+     unreadable in a bright clinic. */
+
+  /* Explanatory helper text — hints, notes, captions. */
+  .note {
+    @apply text-[12px] leading-[1.6] text-muted dark:text-chalk-muted;
+  }
+
+  /* The same voice, one step down, for dense corners. */
+  .note-sm {
+    @apply text-[11px] leading-[1.55] text-muted dark:text-chalk-muted;
+  }
+
+  /* Content of the record itself — findings, evidence, doctor's notes.
+     This is what a clinician actually reads, so it gets full contrast. */
+  .prose-clinical {
+    @apply text-[13px] leading-[1.65] text-ink dark:text-chalk;
+  }
+
+  /* A measured value, ID or timestamp. Monospace earns its place here
+     because the digits must align; it is not a "technical" costume. */
+  .datum {
+    @apply font-mono tabular-nums text-[11px] text-muted dark:text-chalk-muted;
+  }
+
+  /* Ordinal in a numbered list of findings */
+  .list-index {
+    @apply font-mono text-[11px] tabular-nums text-muted dark:text-chalk-muted;
+  }
+
+  /* Extends a small chrome control's hit area to ~44px without
+     changing how big it looks. The 28px icon buttons in the header are
+     deliberate at this scale; only the touch target was too small. */
+  .tap-target {
+    @apply relative
+           after:content-[''] after:absolute after:-inset-2 after:rounded;
   }
 
   /* Primary action: ink block (inverts in dark) */

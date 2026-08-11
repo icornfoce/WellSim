@@ -38,7 +38,7 @@ export default function ThemeToggle({ className = '' }) {
       onClick={toggle}
       title={isDark ? t('theme.toLight') : t('theme.toDark')}
       aria-label="Toggle color theme"
-      className={`relative w-7 h-7 rounded border border-hairline-strong dark:border-coal-600
+      className={`tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600
                   text-muted hover:text-ink hover:border-ink/50
                   dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
                   transition-colors duration-200 flex items-center justify-center ${className}`}

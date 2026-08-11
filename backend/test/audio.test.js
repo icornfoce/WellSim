@@ -96,7 +96,10 @@ const files = () => fs.existsSync(UPLOADS) ? fs.readdirSync(UPLOADS) : [];
   console.log('\n── Path traversal ──────────────────────────────────');
   const trav = await req('DELETE', '/api/device/audio/..%2F..%2Fetc/lung', null, nurseTok);
   check('traversal in patient id rejected', trav.status === 404 || trav.status === 400, `got ${trav.status}`);
-  check('server.js still on disk', fs.existsSync('/tmp/wsz/server.js'));
+  // `../../` from the uploads directory reaches the backend root. This
+  // asserted `/tmp/wsz/server.js`, a path nothing ever creates, so it
+  // failed on every platform and proved nothing either way.
+  check('server.js still on disk', fs.existsSync(path.join(UPLOADS, '../server.js')));
 
   console.log(`\n${'═'.repeat(52)}\n  PASSED: ${pass}   FAILED: ${fail}\n${'═'.repeat(52)}\n`);
   process.exit(fail ? 1 : 0);

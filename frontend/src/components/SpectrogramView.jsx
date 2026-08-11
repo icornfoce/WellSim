@@ -12,6 +12,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
+import { useLang } from '../i18n/LanguageContext';
 
 /** Ink-on-paper heatmap ramp — dark = high energy, matching the print aesthetic. */
 function rampLight(v) {
@@ -48,6 +49,7 @@ export default function SpectrogramView({
 }) {
   const canvasRef = useRef(null);
   const [hovered, setHovered] = useState(null);
+  const { t } = useLang();
 
   const matrix = spectrogram?.matrix || [];
   const duration = spectrogram?.durationSec || 0;
@@ -92,8 +94,8 @@ export default function SpectrogramView({
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between mb-1.5">
-        <p className="microlabel">Log-Mel spectrogram · model input</p>
-        <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+        <p className="microlabel">{t('ai.spectrogram')}</p>
+        <p className="datum">
           0–{Math.round(maxHz / 1000 * 10) / 10} kHz · {duration}s
         </p>
       </div>
@@ -142,13 +144,15 @@ export default function SpectrogramView({
           />
         )}
 
-        {/* Frequency axis ticks */}
-        <div className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none flex flex-col justify-between py-0.5">
+        {/* Frequency axis ticks. Drawn over the heatmap, so each label
+            carries its own plate rather than relying on a text-shadow
+            that disappeared over mid-tone bands at 8px. */}
+        <div className="absolute left-0 top-0 bottom-0 w-10 pointer-events-none flex flex-col justify-between py-1">
           {[maxHz, maxHz / 2, 0].map((hz, i) => (
             <span
               key={i}
-              className="font-mono text-[8px] px-1 text-ink/45 dark:text-chalk/45"
-              style={{ textShadow: isDark ? '0 0 3px #000' : '0 0 3px #fff' }}
+              className="font-mono text-[10px] tabular-nums ml-1 px-1 rounded-[2px]
+                         bg-paper/85 text-ink dark:bg-coal-950/85 dark:text-chalk"
             >
               {hz >= 1000 ? `${Math.round(hz / 100) / 10}k` : Math.round(hz)}
             </span>
@@ -165,7 +169,7 @@ export default function SpectrogramView({
             return (
               <span key={type} className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-[1px]" style={{ backgroundColor: style.color }} />
-                <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
+                <span className="datum !text-ink dark:!text-chalk">
                   {style.label} ×{count}
                 </span>
               </span>

@@ -15,6 +15,7 @@ import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
 import { dataDictionaryTH } from '../../i18n/translations';
+import { clinicalLabel } from '../../i18n/clinicalLabels';
 import {
   fetchMyRecord,
   updateMyRecord,
@@ -121,7 +122,7 @@ export default function PortalPage() {
   const handleSaveDemo = async (e) => {
     e.preventDefault();
     if (!demoForm.name.trim()) {
-      setDemoErr(lang === 'th' ? 'กรุณาระบุชื่อ-นามสกุล' : 'Name is required.');
+      setDemoErr(t('portal.nameRequired'));
       return;
     }
     setSavingDemo(true);
@@ -133,7 +134,7 @@ export default function PortalPage() {
       }
       setIsEditingDemo(false);
     } catch (err) {
-      setDemoErr(err.message || (lang === 'th' ? 'บันทึกข้อมูลไม่สำเร็จ' : 'Failed to update demographics.'));
+      setDemoErr(err.message || t('portal.updateFailed'));
     } finally {
       setSavingDemo(false);
     }
@@ -147,70 +148,97 @@ export default function PortalPage() {
   const [browserRecordTime, setBrowserRecordTime] = useState(0);
   const [uploadState, setUploadState] = useState({ busy: false, message: '', error: '' });
   const [deleting, setDeleting] = useState(false);
+  const [playbackError, setPlaybackError] = useState('');
 
   const audioRef = React.useRef(null);
   const mediaRecorderRef = React.useRef(null);
   const audioChunksRef = React.useRef([]);
   const fileInputRef = React.useRef(null);
 
+  /** The dashboard caps a browser capture at 10 s; so does this. */
+  const MAX_RECORD_SECONDS = 10;
+
+  // Recording clock — and the automatic stop. Without the cap the
+  // portal recorded until the patient thought to press stop, which
+  // meant multi-minute uploads sent as one base64 string.
   useEffect(() => {
-    let interval;
-    if (isBrowserRecording) {
-      interval = setInterval(() => {
-        setBrowserRecordTime((prev) => prev + 1);
-      }, 1000);
-    }
+    if (!isBrowserRecording) return undefined;
+    const interval = setInterval(() => {
+      setBrowserRecordTime((prev) => {
+        const next = prev + 1;
+        if (next >= MAX_RECORD_SECONDS) stopBrowserRecording();
+        return next;
+      });
+    }, 1000);
     return () => clearInterval(interval);
   }, [isBrowserRecording]);
 
+  // Leaving the portal must stop the audio and release the microphone.
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+    };
+  }, []);
+
   const handleTogglePlay = () => {
     const audioLog = record?.audioLogs?.[activeAudioTab];
-    if (!audioLog || !audioLog.available) return;
+    if (!audioLog?.available) return;
 
     if (isPlaying) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      audioRef.current?.pause();
       setIsPlaying(false);
-    } else {
-      setIsPlaying(true);
-      setPlayProgress(0);
-
-      if (audioLog.url) {
-        const fullUrl = audioLog.url.startsWith('http')
-          ? audioLog.url
-          : `${API_URL}${audioLog.url}`;
-
-        if (audioRef.current) {
-          audioRef.current.pause();
-        }
-
-        const audio = new Audio(fullUrl);
-        audio.crossOrigin = 'anonymous';
-        audioRef.current = audio;
-
-        audio.addEventListener('timeupdate', () => {
-          if (audio.duration && isFinite(audio.duration)) {
-            setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
-          }
-        });
-
-        audio.addEventListener('ended', () => {
-          setIsPlaying(false);
-          setPlayProgress(0);
-        });
-
-        audio.addEventListener('error', () => {
-          audioRef.current = null;
-          setIsPlaying(false);
-        });
-
-        audio.play().catch((err) => {
-          console.error('Audio playback failed:', err);
-          setIsPlaying(false);
-        });
-      }
+      return;
     }
+
+    // Without a stored file there is nothing to play. The old code set
+    // isPlaying anyway, so the button flipped to Pause and stayed there
+    // in silence with no way back.
+    if (!audioLog.url) {
+      setPlaybackError(t('audio.playbackMissing'));
+      return;
+    }
+
+    setPlaybackError('');
+    setPlayProgress(0);
+
+    const fullUrl = audioLog.url.startsWith('http')
+      ? audioLog.url
+      : `${API_URL}${audioLog.url}`;
+
+    audioRef.current?.pause();
+
+    const audio = new Audio(fullUrl);
+    audio.crossOrigin = 'anonymous';
+    audioRef.current = audio;
+
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
+      }
+    });
+
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      setPlayProgress(0);
+    });
+
+    audio.addEventListener('error', () => {
+      audioRef.current = null;
+      setIsPlaying(false);
+      setPlayProgress(0);
+      setPlaybackError(t('audio.playbackFailed'));
+    });
+
+    audio.play()
+      .then(() => setIsPlaying(true))
+      .catch((err) => {
+        console.error('Audio playback failed:', err);
+        setIsPlaying(false);
+        setPlaybackError(t('audio.playbackFailed'));
+      });
   };
 
   const startBrowserRecording = async () => {
@@ -245,7 +273,7 @@ export default function PortalPage() {
         stream.getTracks().forEach((track) => track.stop());
 
         try {
-          setUploadState({ busy: true, message: lang === 'th' ? 'กำลังแปลงไฟล์เสียง…' : 'Converting recording…', error: '' });
+          setUploadState({ busy: true, message: t('audio.stepConverting'), error: '' });
           const wav = await encodeWavFromBlob(audioBlob);
           const mins = Math.floor(wav.durationSec / 60);
           const secs = Math.round(wav.durationSec % 60);
@@ -259,17 +287,13 @@ export default function PortalPage() {
           });
 
           if (data.success) {
-            setUploadState({
-              busy: false,
-              message: lang === 'th' ? 'บันทึกและอัปโหลดเสียงสำเร็จ!' : 'Audio recorded and saved successfully!',
-              error: '',
-            });
+            setUploadState({ busy: false, message: t('portal.audioSaved'), error: '' });
             await load();
           } else {
-            setUploadState({ busy: false, message: '', error: data.error || 'Failed to save audio' });
+            setUploadState({ busy: false, message: '', error: data.error || t('audio.saveFailed') });
           }
         } catch (err) {
-          setUploadState({ busy: false, message: '', error: err.message || 'Error processing audio recording.' });
+          setUploadState({ busy: false, message: '', error: err.message || t('audio.saveFailed') });
         } finally {
           setIsBrowserRecording(false);
           setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 5000);
@@ -283,7 +307,7 @@ export default function PortalPage() {
       setUploadState({
         busy: false,
         message: '',
-        error: (lang === 'th' ? 'ไม่สามารถเข้าถึงไมโครโฟนได้: ' : 'Microphone access denied: ') + err.message,
+        error: t('audio.micDenied', { error: err.message }),
       });
     }
   };
@@ -299,7 +323,7 @@ export default function PortalPage() {
     event.target.value = '';
     if (!file || !record) return;
 
-    setUploadState({ busy: true, message: lang === 'th' ? 'กำลังอัปโหลด…' : 'Uploading…', error: '' });
+    setUploadState({ busy: true, message: t('audio.stepUploading'), error: '' });
 
     try {
       const wav = await encodeWavFromBlob(file);
@@ -311,14 +335,10 @@ export default function PortalPage() {
         deviceId: 'PATIENT-PORTAL',
       });
 
-      setUploadState({
-        busy: false,
-        message: lang === 'th' ? 'อัปโหลดไฟล์เสียงสำเร็จ!' : 'Upload successful!',
-        error: '',
-      });
+      setUploadState({ busy: false, message: t('portal.audioSaved'), error: '' });
       await load();
     } catch (err) {
-      setUploadState({ busy: false, message: '', error: err.message || 'Failed to upload audio.' });
+      setUploadState({ busy: false, message: '', error: err.message || t('audio.saveFailed') });
     } finally {
       setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 5000);
     }
@@ -326,20 +346,21 @@ export default function PortalPage() {
 
   const handleDeleteAudio = async () => {
     if (!record) return;
-    if (!window.confirm(lang === 'th' ? 'ต้องการลบไฟล์เสียงนี้ใช่หรือไม่?' : 'Delete this recording?')) return;
+    if (!window.confirm(t('audio.confirmDelete'))) return;
 
     setDeleting(true);
     try {
       await apiDeleteAudio(record.id, activeAudioTab);
       setIsPlaying(false);
       setPlayProgress(0);
+      setPlaybackError('');
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
       await load();
     } catch (err) {
-      setUploadState({ busy: false, message: '', error: err.message || 'Failed to delete audio.' });
+      setUploadState({ busy: false, message: '', error: err.message || t('audio.saveFailed') });
     } finally {
       setDeleting(false);
     }
@@ -486,7 +507,7 @@ export default function PortalPage() {
             <button
               onClick={() => window.print()}
               title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
-              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                          text-muted hover:text-ink hover:border-ink/50
                          dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
                          transition-colors duration-200"
@@ -498,7 +519,7 @@ export default function PortalPage() {
             <button
               onClick={onLogout}
               title={t('header.signOut')}
-              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                          text-muted hover:text-risk-high hover:border-risk-high/50
                          dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
                          transition-colors duration-200"
@@ -548,7 +569,7 @@ export default function PortalPage() {
                     <button
                       onClick={startEditDemo}
                       className="btn-line !py-1 !px-2.5 flex items-center gap-1.5 text-xs ml-1"
-                      title={lang === 'th' ? 'แก้ไขข้อมูลส่วนตัว' : 'Edit profile'}
+                      title={t('portal.editProfile')}
                     >
                       <Pencil className="w-3 h-3" />
                       <span>{t('common.edit')}</span>
@@ -560,12 +581,10 @@ export default function PortalPage() {
               {isEditingDemo ? (
                 <form onSubmit={handleSaveDemo} className="mt-5 pt-4 border-t border-hairline dark:border-coal-700 animate-fade-in flex flex-col gap-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-ink dark:text-chalk">
-                      {lang === 'th' ? 'แก้ไขข้อมูลส่วนตัว' : 'Edit Personal Details'}
+                    <h3 className="text-[13px] font-semibold text-ink dark:text-chalk">
+                      {t('portal.editProfile')}
                     </h3>
-                    <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                      {lang === 'th' ? '(แก้ไขข้อมูลทั่วไปของผู้ป่วย)' : '(Demographics only)'}
-                    </span>
+                    <span className="note-sm">{t('portal.editProfileScope')}</span>
                   </div>
 
                   {demoErr && (
@@ -675,7 +694,7 @@ export default function PortalPage() {
                       <p className="microlabel">{label}</p>
                       <p className="text-[15px] font-medium text-ink dark:text-chalk mt-1 tabular-nums">
                         {value}
-                        {unit && <span className="font-mono text-[10px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
+                        {unit && <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
                       </p>
                     </div>
                   ))}
@@ -692,7 +711,7 @@ export default function PortalPage() {
                     <div className="flex justify-between items-baseline">
                       <p className="microlabel">{row.label}</p>
                       {row.bad && (
-                        <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">
+                        <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">
                           {row.mark} {row.mark === '▲' ? t('tag.high') : t('tag.low')}
                         </span>
                       )}
@@ -705,13 +724,11 @@ export default function PortalPage() {
                       )}
                     </p>
                     {row.bar && <TickBar {...row.bar} />}
-                    <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} {row.ref}</p>
+                    <p className="datum mt-2.5">{t('vitals.ref')} {row.ref}</p>
                   </div>
                 ))}
                 <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
-                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 leading-relaxed">
-                    {t('portal.vitalsNote')}
-                  </p>
+                  <p className="note-sm">{t('portal.vitalsNote')}</p>
                 </div>
               </div>
             </div>
@@ -767,17 +784,15 @@ export default function PortalPage() {
                     <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
                       {record.findings.map((finding, idx) => (
                         <li key={idx} className="flex items-start gap-3 py-2.5">
-                          <span className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 w-5 shrink-0 pt-0.5">
+                          <span className="list-index w-5 shrink-0 pt-0.5">
                             {String(idx + 1).padStart(2, '0')}
                           </span>
-                          <span className="text-xs leading-relaxed text-ink/90 dark:text-chalk/90">{td(finding)}</span>
+                          <span className="prose-clinical">{td(finding)}</span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-3">
-                      {t('portal.findingsNone')}
-                    </p>
+                    <p className="note mt-3">{t('portal.findingsNone')}</p>
                   )}
                 </div>
               </div>
@@ -795,7 +810,7 @@ export default function PortalPage() {
                         setIsPlaying(false);
                         setPlayProgress(0);
                       }}
-                      className={`text-xs capitalize pb-0.5 border-b transition-colors duration-200 ${
+                      className={`text-[13px] capitalize text-center min-w-[2.75rem] px-1 py-2.5 border-b-2 transition-colors duration-200 ${
                         activeAudioTab === tab
                           ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
                           : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
@@ -818,9 +833,9 @@ export default function PortalPage() {
 
                 {record?.audioLogs?.[activeAudioTab]?.available ? (
                   <div>
-                    <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
-                      <span className="truncate pr-4">
-                        {t('audio.' + activeAudioTab)} · {record.audioLogs[activeAudioTab].status || t('audio.recorded')}
+                    <div className="flex items-center justify-between gap-4 datum">
+                      <span className="truncate">
+                        {t('audio.' + activeAudioTab)} · {td(record.audioLogs[activeAudioTab].status) || t('audio.recorded')}
                       </span>
                       <span className="shrink-0">
                         {t('audio.dur')} {record.audioLogs[activeAudioTab].duration || '0:00'}
@@ -843,10 +858,16 @@ export default function PortalPage() {
                         />
                       </div>
 
-                      <span className="font-mono text-[10px] text-white/60 tabular-nums w-9 text-right shrink-0">
+                      <span className="font-mono text-[11px] text-chalk-muted tabular-nums w-9 text-right shrink-0">
                         {playProgress}%
                       </span>
                     </div>
+
+                    {playbackError && (
+                      <p className="note mt-2 !text-risk-high dark:!text-risk-highd">
+                        {playbackError}
+                      </p>
+                    )}
 
                     {/* Controls for current recording */}
                     <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
@@ -871,25 +892,25 @@ export default function PortalPage() {
                     <p className="microlabel mb-2">{t('audio.none')}</p>
 
                     {isBrowserRecording ? (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         <div className="flex items-center justify-center gap-2">
-                          <span className="w-2.5 h-2.5 bg-risk-high rounded-full animate-pulse" />
-                          <span className="font-mono text-xs text-risk-high">
-                            {lang === 'th' ? `กำลังบันทึกเสียง (${browserRecordTime}s)` : `Recording audio... (${browserRecordTime}s)`}
+                          <span className="w-2.5 h-2.5 bg-risk-high dark:bg-risk-highd rounded-full animate-pulse" />
+                          <span className="text-[13px] font-medium text-risk-high dark:text-risk-highd tabular-nums">
+                            {t('audio.recordingNow', { s: browserRecordTime })}
                           </span>
                         </div>
+                        <p className="note-sm">{t('audio.recordingHint', { max: MAX_RECORD_SECONDS })}</p>
                         <button
                           onClick={stopBrowserRecording}
-                          className="btn-line border-risk-high text-risk-high hover:bg-risk-high/[0.05]"
+                          className="btn-line !border-risk-high/50 !text-risk-high hover:!bg-risk-high/[0.06]
+                                     dark:!border-risk-highd/50 dark:!text-risk-highd"
                         >
-                          {lang === 'th' ? 'หยุดการบันทึก' : 'Stop Recording'}
+                          {t('audio.stopRecording')}
                         </button>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
-                          {t('audio.noneDetail')}
-                        </p>
+                      <div className="space-y-4">
+                        <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
                         <div className="flex flex-wrap justify-center gap-3">
                           <button
                             onClick={startBrowserRecording}
@@ -908,27 +929,20 @@ export default function PortalPage() {
                           </button>
                         </div>
 
-                        <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 leading-relaxed">
-                          {t('audio.uploadHint')}
-                        </p>
+                        <p className="note-sm max-w-md mx-auto">{t('audio.uploadHint')}</p>
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Status messages */}
-                {uploadState.busy && (
-                  <p className="mt-3 font-mono text-[10px] text-med-600 dark:text-med-300">
-                    {uploadState.message}
-                  </p>
-                )}
-                {!uploadState.busy && uploadState.message && (
-                  <p className="mt-3 font-mono text-[10px] text-med-600 dark:text-med-300">
+                {uploadState.message && (
+                  <p className="note mt-3 !text-med-700 dark:!text-med-300">
                     {uploadState.message}
                   </p>
                 )}
                 {uploadState.error && (
-                  <p className="mt-3 font-mono text-[10px] text-risk-high dark:text-risk-highd">
+                  <p className="note mt-3 !text-risk-high dark:!text-risk-highd">
                     {uploadState.error}
                   </p>
                 )}
@@ -939,34 +953,38 @@ export default function PortalPage() {
                     const log = record?.audioLogs?.[key];
                     const isTabActive = activeAudioTab === key;
                     return (
-                      <div
+                      // A real button: this row selects a recording, and
+                      // as a <div onClick> it could not be reached by
+                      // keyboard or announced as actionable at all.
+                      <button
                         key={key}
+                        type="button"
+                        aria-pressed={isTabActive}
                         onClick={() => {
                           setActiveAudioTab(key);
                           setIsPlaying(false);
                           setPlayProgress(0);
+                          setPlaybackError('');
                         }}
-                        className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors duration-150 ${
-                          isTabActive ? 'bg-ink/[0.04] dark:bg-coal-800' : 'bg-surface dark:bg-coal-900 hover:bg-ink/[0.02]'
+                        className={`w-full text-left flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-150 ${
+                          isTabActive ? 'bg-ink/[0.04] dark:bg-coal-800' : 'bg-surface dark:bg-coal-900 hover:bg-ink/[0.02] dark:hover:bg-coal-850'
                         }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`w-1.5 h-1.5 rounded-full ${log?.available ? 'bg-med-500' : 'bg-muted/40'}`} />
-                          <p className="text-xs font-medium text-ink dark:text-chalk capitalize">{t('audio.' + key)}</p>
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${log?.available ? 'bg-med-500' : 'bg-hairline-strong dark:bg-coal-600'}`} />
+                          <span className="text-[13px] font-medium text-ink dark:text-chalk capitalize">{t('audio.' + key)}</span>
                           {log?.available ? (
-                            <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                            <span className="datum !text-med-700 dark:!text-med-300">
                               {t('audio.recorded')} · {log.duration}
-                            </p>
+                            </span>
                           ) : (
-                            <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                              {t('audio.notRecorded')}
-                            </p>
+                            <span className="datum">{t('audio.notRecorded')}</span>
                           )}
-                        </div>
-                        <span className="font-mono text-[10px] text-med-600 dark:text-med-300">
-                          {isTabActive ? (lang === 'th' ? 'กำลังเลือก' : 'Active') : (lang === 'th' ? 'เลือก' : 'Select')}
                         </span>
-                      </div>
+                        <span className="font-mono text-[11px] text-med-700 dark:text-med-300 shrink-0">
+                          {isTabActive ? t('portal.rowActive') : t('portal.rowSelect')}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
@@ -980,9 +998,7 @@ export default function PortalPage() {
               {Object.keys(analyses).length === 0 ? (
                 <div className="mt-4 text-center py-6 border border-dashed border-hairline-strong dark:border-coal-600 rounded">
                   <p className="microlabel">{t('portal.review.noAnalysis')}</p>
-                  <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-1">
-                    {t('portal.review.noAnalysisDetail')}
-                  </p>
+                  <p className="note mt-1.5">{t('portal.review.noAnalysisDetail')}</p>
                 </div>
               ) : (
                 <div className="mt-4 flex flex-col gap-3">
@@ -1016,9 +1032,12 @@ export default function PortalPage() {
                       return { text: '—', cls: 'text-muted dark:text-chalk-muted' };
                     };
 
-                    // Display label/triage: doctor's word > AI word
-                    const displayLabel  = (isModified || isConfirmed) ? (a.review.finalLabel  || a.label)  : (isRejected ? null : a?.label);
+                    // Display label/triage: doctor's word > AI word.
+                    // The label is an engine key (`wheeze_and_crackles`)
+                    // and must be translated before a patient sees it.
+                    const displayKey    = (isModified || isConfirmed) ? (a.review.finalLabel  || a.label)  : (isRejected ? null : a?.label);
                     const displayTriage = (isModified || isConfirmed) ? (a.review.finalTriage || a.triage)  : (isRejected ? null : a?.triage);
+                    const displayLabel  = displayKey ? clinicalLabel(displayKey, lang) : null;
                     const triage = triageLabel(displayTriage);
 
                     const reviewedAtStr = a?.review?.reviewedAt
@@ -1038,7 +1057,7 @@ export default function PortalPage() {
                               {t('audio.' + type)}
                             </p>
                           </div>
-                          <span className={`font-mono text-[10px] font-semibold ${cfg.text}`}>
+                          <span className={`font-mono text-[11px] font-semibold ${cfg.text}`}>
                             {cfg.label}
                           </span>
                         </div>
@@ -1059,7 +1078,7 @@ export default function PortalPage() {
                               {a.review?.note && (
                                 <div className="bg-ink/[0.04] dark:bg-coal-800 rounded px-3 py-2 mt-1">
                                   <p className="microlabel mb-1">{t('portal.review.doctorNote')}</p>
-                                  <p className="text-xs text-ink/80 dark:text-chalk/80 leading-relaxed">{a.review.note}</p>
+                                  <p className="prose-clinical">{a.review.note}</p>
                                 </div>
                               )}
                             </div>
@@ -1073,9 +1092,9 @@ export default function PortalPage() {
                                 <p className="text-sm font-medium text-ink dark:text-chalk">
                                   {displayLabel || '—'}
                                 </p>
-                                {isModified && a.label && a.label !== displayLabel && (
-                                  <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5 line-through">
-                                    {a.label}
+                                {isModified && a.label && a.label !== displayKey && (
+                                  <p className="note-sm mt-1 line-through">
+                                    {clinicalLabel(a.label, lang)}
                                   </p>
                                 )}
                               </div>
@@ -1091,7 +1110,7 @@ export default function PortalPage() {
                           {/* Doctor sign-off line */}
                           {isDoctorSigned && a.review?.doctorName && (
                             <div className="pt-2 mt-1 border-t border-hairline dark:border-coal-700 flex flex-wrap items-center gap-1.5">
-                              <span className={`inline-flex items-center gap-1 font-mono text-[10px] px-2 py-0.5 rounded-full border ${
+                              <span className={`inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-full border ${
                                 isConfirmed
                                   ? 'border-risk-low/40 text-risk-low dark:text-risk-lowd dark:border-risk-lowd/40 bg-risk-low/[0.06] dark:bg-risk-lowd/[0.07]'
                                   : isModified
@@ -1102,18 +1121,14 @@ export default function PortalPage() {
                                 &nbsp;{a.review.doctorName}
                               </span>
                               {reviewedAtStr && (
-                                <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                                  {t('portal.review.reviewedAt')} {reviewedAtStr}
-                                </span>
+                                <span className="datum">{t('portal.review.reviewedAt')} {reviewedAtStr}</span>
                               )}
                             </div>
                           )}
 
                           {/* Pending notice */}
                           {!isDoctorSigned && a && reviewStatus === 'pending' && (
-                            <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 leading-relaxed">
-                              {t('portal.review.pendingDetail')}
-                            </p>
+                            <p className="note-sm">{t('portal.review.pendingDetail')}</p>
                           )}
                         </div>
                       </div>
@@ -1123,7 +1138,7 @@ export default function PortalPage() {
               )}
             </div>
 
-            <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
+            <p className="microlabel text-center pb-2 print-hidden">
               {t('colophon')}
             </p>
           </>
@@ -1133,21 +1148,21 @@ export default function PortalPage() {
         <div className="hidden print-footer" style={{ display: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginTop: '24px' }}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Reviewed by:</p>
+              <p style={{ fontSize: '9pt', color: '#4a4a4a', marginBottom: '32px' }}>Reviewed by:</p>
               <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
                 <p style={{ fontSize: '9pt' }}>Physician name &amp; signature</p>
-                <p style={{ fontSize: '8pt', color: '#999' }}>Date: _____ / _____ / _____</p>
+                <p style={{ fontSize: '8pt', color: '#5c5c5c' }}>Date: _____ / _____ / _____</p>
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Nurse/Staff:</p>
+              <p style={{ fontSize: '9pt', color: '#4a4a4a', marginBottom: '32px' }}>Nurse/Staff:</p>
               <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
                 <p style={{ fontSize: '9pt' }}>Name &amp; signature</p>
-                <p style={{ fontSize: '8pt', color: '#999' }}>Station: _____________</p>
+                <p style={{ fontSize: '8pt', color: '#5c5c5c' }}>Station: _____________</p>
               </div>
             </div>
           </div>
-          <p style={{ fontSize: '7pt', color: '#aaa', textAlign: 'center', marginTop: '16px' }}>
+          <p style={{ fontSize: '8pt', color: '#5c5c5c', textAlign: 'center', marginTop: '16px' }}>
             WellSim Clinical Triage System — AI screening results require physician verification before clinical action.
           </p>
         </div>

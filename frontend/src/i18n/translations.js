@@ -45,6 +45,13 @@ export const translations = {
       sortNote: 'Sorted by AI triage priority — urgent first',
       noMatch: 'No patients match “{q}”',
       pendingReview: '{n} awaiting review',
+      signedCount: '{n} signed by a physician',
+    },
+    bmi: {
+      under:  'Underweight',
+      normal: 'Normal weight',
+      over:   'Overweight',
+      obese:  'Obese',
     },
     risk: {
       high: 'HIGH',
@@ -96,7 +103,7 @@ export const translations = {
       dur: 'DUR',
       statusUnavailable: 'Status unavailable',
       none: 'No recording',
-      noneDetail: 'THIS DIAGNOSTIC AUDIO WAS NOT CAPTURED',
+      noneDetail: 'This recording has not been captured yet. Choose a source below to add it.',
       notRecorded: 'None',
       recorded: 'Recorded',
       // Capture sources
@@ -113,6 +120,28 @@ export const translations = {
       confirmDelete: 'Delete this recording? Its AI analysis will be removed with it. This cannot be undone.',
       confirmDeleteSigned:
         'This recording carries a review signed by {doctor}. Deleting it removes the recording, its AI analysis, and that signed review. Continue?',
+      // Playback
+      playbackFailed:
+        'This recording could not be played — the audio file is missing or unreadable on the server. Re-record or upload it again; nothing is played in its place.',
+      playbackMissing: 'No audio file is stored for this recording.',
+      // Capture progress
+      stepReading: 'Reading {file}…',
+      stepConverting: 'Converting to WAV…',
+      stepUploading: 'Uploading and screening…',
+      stepDone: 'Uploaded {file} ({dur}).',
+      stepDoneTrimmed: 'Uploaded — trimmed to the first {max}s.',
+      saveFailed: 'The recording could not be saved.',
+      micDenied: 'Cannot access the microphone: {error}',
+      recordingNow: 'Recording from this device — {s}s',
+      recordingHint: 'Recording stops automatically after {max} seconds.',
+      stopRecording: 'Stop recording',
+      // ESP32 device capture
+      esp32Triggered: 'Recording requested from the ESP32',
+      esp32Sending: 'Sending the command to the device…',
+      esp32Waiting: 'Waiting for the device to record — this takes about 5 seconds.',
+      esp32Timeout: 'The device did not respond. Check that it is powered on and connected to Wi-Fi, then try again.',
+      esp32Failed: 'Could not reach the device: {error}',
+      networkError: 'Network error: {error}',
     },
     ai: {
       title: 'AI Screening & Physician Review',
@@ -131,6 +160,7 @@ export const translations = {
       noDifferentials: 'None flagged.',
       signalQuality: 'Signal quality',
       peak: 'peak',
+      spectrogram: 'Log-Mel spectrogram · model input',
       noResult: 'Not screened yet',
       noResultDetail:
         'No AI screening has been run on this recording. Screening runs automatically on upload; use the button below to run it manually.',
@@ -258,6 +288,13 @@ export const translations = {
       vitalsNote: 'Values are entered by clinic staff during screening.',
       findingsNone: 'No diagnostic findings yet.',
       refresh: 'Refresh',
+      audioSaved: 'Recording saved.',
+      rowActive: 'Selected',
+      rowSelect: 'Select',
+      editProfile: 'Edit personal details',
+      editProfileScope: 'General details only',
+      nameRequired: 'Please enter your full name.',
+      updateFailed: 'Your details could not be saved.',
       review: {
         title: 'Screening results & physician review',
         noAnalysis: 'No screening results yet',
@@ -349,6 +386,13 @@ export const translations = {
       sortNote: 'เรียงตามความเร่งด่วนที่ AI ประเมิน — ด่วนขึ้นก่อน',
       noMatch: 'ไม่พบผู้ป่วยที่ตรงกับ “{q}”',
       pendingReview: 'รอแพทย์ตรวจสอบ {n} รายการ',
+      signedCount: 'แพทย์ลงนามแล้ว {n} รายการ',
+    },
+    bmi: {
+      under:  'น้ำหนักน้อย',
+      normal: 'น้ำหนักปกติ',
+      over:   'น้ำหนักเกิน',
+      obese:  'อ้วน',
     },
     risk: {
       high: 'สูง',
@@ -400,7 +444,7 @@ export const translations = {
       dur: 'ยาว',
       statusUnavailable: 'ไม่ทราบสถานะ',
       none: 'ไม่มีบันทึกเสียง',
-      noneDetail: 'ไม่ได้บันทึกเสียงวินิจฉัยรายการนี้',
+      noneDetail: 'ยังไม่ได้บันทึกเสียงรายการนี้ เลือกวิธีบันทึกจากปุ่มด้านล่าง',
       notRecorded: 'ไม่มี',
       recorded: 'บันทึกแล้ว',
       // แหล่งที่มาของเสียง
@@ -417,6 +461,28 @@ export const translations = {
       confirmDelete: 'ต้องการลบไฟล์เสียงนี้หรือไม่ ผลวิเคราะห์ของ AI จะถูกลบไปด้วย และไม่สามารถกู้คืนได้',
       confirmDeleteSigned:
         'ไฟล์เสียงนี้มีการยืนยันผลโดย {doctor} แล้ว การลบจะลบทั้งไฟล์เสียง ผลวิเคราะห์ AI และผลการยืนยันของแพทย์ ต้องการดำเนินการต่อหรือไม่',
+      // การเล่นเสียง
+      playbackFailed:
+        'เล่นไฟล์เสียงนี้ไม่ได้ — ไฟล์หายไปหรือเสียหายบนเซิร์ฟเวอร์ กรุณาอัดใหม่หรืออัปโหลดใหม่ ระบบจะไม่เล่นเสียงอื่นแทน',
+      playbackMissing: 'ไม่มีไฟล์เสียงที่จัดเก็บไว้สำหรับรายการนี้',
+      // ความคืบหน้าการบันทึกเสียง
+      stepReading: 'กำลังอ่านไฟล์ {file}…',
+      stepConverting: 'กำลังแปลงเป็นไฟล์ WAV…',
+      stepUploading: 'กำลังอัปโหลดและวิเคราะห์…',
+      stepDone: 'อัปโหลด {file} แล้ว ({dur})',
+      stepDoneTrimmed: 'อัปโหลดแล้ว — ตัดเหลือ {max} วินาทีแรก',
+      saveFailed: 'บันทึกไฟล์เสียงไม่สำเร็จ',
+      micDenied: 'เข้าถึงไมโครโฟนไม่ได้: {error}',
+      recordingNow: 'กำลังบันทึกเสียงจากเครื่องนี้ — {s} วินาที',
+      recordingHint: 'ระบบจะหยุดบันทึกอัตโนมัติเมื่อครบ {max} วินาที',
+      stopRecording: 'หยุดบันทึก',
+      // การสั่งอัดผ่านอุปกรณ์ ESP32
+      esp32Triggered: 'ส่งคำสั่งอัดเสียงไปยัง ESP32 แล้ว',
+      esp32Sending: 'กำลังส่งคำสั่งไปยังอุปกรณ์…',
+      esp32Waiting: 'กำลังรออุปกรณ์บันทึกเสียง ใช้เวลาประมาณ 5 วินาที',
+      esp32Timeout: 'อุปกรณ์ไม่ตอบสนอง กรุณาตรวจสอบว่าเปิดเครื่องและเชื่อมต่อ Wi-Fi แล้ว จากนั้นลองใหม่',
+      esp32Failed: 'ติดต่ออุปกรณ์ไม่ได้: {error}',
+      networkError: 'เครือข่ายขัดข้อง: {error}',
     },
     ai: {
       title: 'การคัดกรองด้วย AI และการประเมินโดยแพทย์',
@@ -435,6 +501,7 @@ export const translations = {
       noDifferentials: 'ไม่มี',
       signalQuality: 'คุณภาพสัญญาณ',
       peak: 'ค่าสูงสุด',
+      spectrogram: 'สเปกโตรแกรม Log-Mel · ข้อมูลที่ป้อนให้โมเดล',
       noResult: 'ยังไม่ได้คัดกรอง',
       noResultDetail:
         'ยังไม่มีการวิเคราะห์เสียงนี้ด้วย AI โดยปกติระบบจะวิเคราะห์อัตโนมัติเมื่ออัปโหลด หรือกดปุ่มด้านล่างเพื่อวิเคราะห์เอง',
@@ -562,6 +629,13 @@ export const translations = {
       vitalsNote: 'เจ้าหน้าที่จะเป็นผู้บันทึกค่าระหว่างการคัดกรอง',
       findingsNone: 'ยังไม่มีผลการวินิจฉัย',
       refresh: 'รีเฟรช',
+      audioSaved: 'บันทึกไฟล์เสียงแล้ว',
+      rowActive: 'กำลังเลือก',
+      rowSelect: 'เลือก',
+      editProfile: 'แก้ไขข้อมูลส่วนตัว',
+      editProfileScope: 'เฉพาะข้อมูลทั่วไป',
+      nameRequired: 'กรุณาระบุชื่อ-นามสกุล',
+      updateFailed: 'บันทึกข้อมูลไม่สำเร็จ',
       review: {
         title: 'ผลคัดกรองและการตรวจสอบโดยแพทย์',
         noAnalysis: 'ยังไม่มีผลคัดกรอง',

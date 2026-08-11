@@ -249,7 +249,7 @@ function Dashboard() {
       }
     } catch (err) {
       console.error('Analysis failed:', err.message);
-      alert(err.message);
+      setUploadState({ busy: false, message: '', error: err.message });
     } finally {
       setAnalysisRunning(false);
     }
@@ -309,178 +309,90 @@ function Dashboard() {
   }, []);
 
   const audioRef = useRef(null);
-  const synthRef = useRef(null);
+  const [playbackError, setPlaybackError] = useState('');
 
-  // Web Audio Context synthesizer for demo/placeholder patient sounds
-  const playDemoSynth = (type) => {
-    try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      if (type === 'heart') {
-        // Low heartbeat thuds
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(55, audioCtx.currentTime);
-        
-        gain.gain.setValueAtTime(0, audioCtx.currentTime);
-        const duration = 15;
-        // Rhythmic lub-dub heartbeat pulses
-        for (let t = 0; t < duration; t += 1.0) {
-          // Lub
-          gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + t);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.12);
-          // Dub
-          gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + t + 0.22);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.40);
-        }
-        osc.start();
-        osc.stop(audioCtx.currentTime + duration);
-      } else {
-        // Lung breath sound (simulated using modulated triangle wave)
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(90, audioCtx.currentTime);
-        
-        gain.gain.setValueAtTime(0.005, audioCtx.currentTime);
-        const duration = 12;
-        // Slow deep breathing cycle (4 seconds per breath)
-        for (let t = 0; t < duration; t += 4.0) {
-          // Inhale (amplitude and frequency rise)
-          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + t + 1.2);
-          osc.frequency.linearRampToValueAtTime(140, audioCtx.currentTime + t + 1.2);
-          // Exhale (amplitude and frequency fall)
-          gain.gain.linearRampToValueAtTime(0.005, audioCtx.currentTime + t + 3.2);
-          osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + t + 3.2);
-        }
-        osc.start();
-        osc.stop(audioCtx.currentTime + duration);
-      }
-
-      return {
-        stop: () => {
-          try {
-            osc.stop();
-            audioCtx.close();
-          } catch (e) {}
-        }
-      };
-    } catch (e) {
-      console.error('AudioContext synth failed:', e);
-      return null;
-    }
-  };
-
+  /**
+   * Play the stored recording — and only the stored recording.
+   *
+   * An earlier version fell back to a Web Audio synthesiser when the
+   * file failed to load: it played a generated "heartbeat" or
+   * "breathing" tone and ran the progress bar as though the patient's
+   * own audio were playing. A clinician listening to that would have
+   * been auscultating an oscillator. A screening tool must never
+   * substitute a plausible sound for a missing one, so a failed load
+   * now says so and stops.
+   */
   const handleTogglePlay = () => {
     const audioLog = patient?.audioLogs?.[activeAudioTab];
-    if (!audioLog || !audioLog.available) return;
+    if (!audioLog?.available) return;
 
     if (isPlaying) {
-      // Pause/Stop
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      if (synthRef.current) {
-        if (synthRef.current.stop) synthRef.current.stop();
-        if (synthRef.current.interval) clearInterval(synthRef.current.interval);
-        synthRef.current = null;
-      }
+      audioRef.current?.pause();
       setIsPlaying(false);
-    } else {
-      // Start Playback
-      setIsPlaying(true);
-      setPlayProgress(0);
-
-      if (audioLog.url) {
-        // Play real uploaded audio file from the backend
-        const fullUrl = audioLog.url.startsWith('http')
-          ? audioLog.url
-          : `${API_URL}${audioLog.url}`;
-
-        if (audioRef.current) {
-          audioRef.current.pause();
-        }
-
-        const audio = new Audio(fullUrl);
-        audio.crossOrigin = 'anonymous'; // Required for cross-origin audio playback
-        audioRef.current = audio;
-
-        audio.addEventListener('timeupdate', () => {
-          if (audio.duration && isFinite(audio.duration)) {
-            setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
-          }
-        });
-
-        audio.addEventListener('ended', () => {
-          setIsPlaying(false);
-          setPlayProgress(0);
-        });
-
-        // If real audio file fails to load, fall back to synthesizer
-        audio.addEventListener('error', () => {
-          console.warn('Audio file failed to load, falling back to synthesizer:', fullUrl);
-          audioRef.current = null;
-          const synth = playDemoSynth(activeAudioTab);
-          synthRef.current = synth;
-
-          const durationSec = activeAudioTab === 'lung' ? 12 : activeAudioTab === 'heart' ? 15 : 10;
-          const startTime = Date.now();
-          const interval = setInterval(() => {
-            const elapsed = (Date.now() - startTime) / 1000;
-            const progress = Math.min(Math.round((elapsed / durationSec) * 100), 100);
-            setPlayProgress(progress);
-
-            if (progress >= 100) {
-              clearInterval(interval);
-              setIsPlaying(false);
-              if (synthRef.current) {
-                synthRef.current.stop();
-                synthRef.current = null;
-              }
-            }
-          }, 100);
-
-          if (synthRef.current) synthRef.current.interval = interval;
-        });
-
-        audio.play().catch(err => {
-          console.error("Audio playback failed:", err);
-          setIsPlaying(false);
-        });
-      } else {
-        // Play simulated synthesizer sound
-        const synth = playDemoSynth(activeAudioTab);
-        synthRef.current = synth;
-
-        const durationSec = activeAudioTab === 'lung' ? 12 : 15;
-        const startTime = Date.now();
-        const interval = setInterval(() => {
-          const elapsed = (Date.now() - startTime) / 1000;
-          const progress = Math.min((elapsed / durationSec) * 100, 100);
-          setPlayProgress(progress);
-
-          if (progress >= 100) {
-            clearInterval(interval);
-            setIsPlaying(false);
-            if (synthRef.current) {
-              synthRef.current.stop();
-              synthRef.current = null;
-            }
-          }
-        }, 100);
-
-        synthRef.current.interval = interval;
-      }
+      return;
     }
+
+    if (!audioLog.url) {
+      setPlaybackError(t('audio.playbackMissing'));
+      return;
+    }
+
+    setPlaybackError('');
+    setPlayProgress(0);
+
+    const fullUrl = audioLog.url.startsWith('http')
+      ? audioLog.url
+      : `${API_URL}${audioLog.url}`;
+
+    audioRef.current?.pause();
+
+    const audio = new Audio(fullUrl);
+    audio.crossOrigin = 'anonymous'; // Required for cross-origin audio playback
+    audioRef.current = audio;
+
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
+      }
+    });
+
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      setPlayProgress(0);
+    });
+
+    audio.addEventListener('error', () => {
+      console.warn('Audio file failed to load:', fullUrl);
+      audioRef.current = null;
+      setIsPlaying(false);
+      setPlayProgress(0);
+      setPlaybackError(t('audio.playbackFailed'));
+    });
+
+    audio.play()
+      .then(() => setIsPlaying(true))
+      .catch((err) => {
+        console.error('Audio playback failed:', err);
+        setIsPlaying(false);
+        setPlaybackError(t('audio.playbackFailed'));
+      });
   };
 
   const [isTriggeringESP32, setIsTriggeringESP32] = useState(false);
-  const [esp32TriggerMessage, setEsp32TriggerMessage] = useState('');
+  // One status line shared by every capture route (device, mic, upload)
+  const [captureMessage, setCaptureMessage] = useState('');
   const [isBrowserRecording, setIsBrowserRecording] = useState(false);
   const [browserRecordTime, setBrowserRecordTime] = useState(0);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const esp32PollRef = useRef(null);
+
+  const stopEsp32Poll = useCallback(() => {
+    if (esp32PollRef.current) {
+      clearInterval(esp32PollRef.current);
+      esp32PollRef.current = null;
+    }
+  }, []);
 
   // File upload / delete
   const fileInputRef = useRef(null);
@@ -501,13 +413,13 @@ function Dashboard() {
     event.target.value = '';
     if (!file || !patient) return;
 
-    setUploadState({ busy: true, message: `Reading ${file.name}…`, error: '' });
+    setUploadState({ busy: true, message: t('audio.stepReading', { file: file.name }), error: '' });
 
     try {
-      setUploadState({ busy: true, message: 'Converting to WAV…', error: '' });
+      setUploadState({ busy: true, message: t('audio.stepConverting'), error: '' });
       const wav = await encodeWavFromBlob(file);
 
-      setUploadState({ busy: true, message: 'Uploading and screening…', error: '' });
+      setUploadState({ busy: true, message: t('audio.stepUploading'), error: '' });
       const res = await apiUploadAudio({
         patientId: patient.id,
         type: activeAudioTab,
@@ -526,8 +438,8 @@ function Dashboard() {
         busy: false,
         error: '',
         message: wav.trimmed
-          ? `Uploaded — trimmed to the first ${MAX_DURATION_SEC}s.`
-          : `Uploaded ${file.name} (${formatDuration(wav.durationSec)}).`,
+          ? t('audio.stepDoneTrimmed', { max: MAX_DURATION_SEC })
+          : t('audio.stepDone', { file: file.name, dur: formatDuration(wav.durationSec) }),
       });
       setTimeout(() => setUploadState((s) => (s.busy ? s : { ...s, message: '' })), 6000);
     } catch (err) {
@@ -580,7 +492,7 @@ function Dashboard() {
       }
     } catch (err) {
       console.error('Delete failed:', err);
-      alert(err.message);
+      setUploadState({ busy: false, message: '', error: err.message });
     } finally {
       setDeleting(false);
     }
@@ -589,7 +501,7 @@ function Dashboard() {
   const triggerESP32Record = async () => {
     try {
       setIsTriggeringESP32(true);
-      setEsp32TriggerMessage('Sending command to ESP32...');
+      setCaptureMessage(t('audio.esp32Sending'));
 
       // Goes through the API client so the session token is attached —
       // this endpoint now requires an authenticated user or a device key
@@ -601,19 +513,22 @@ function Dashboard() {
       }).catch((err) => ({ success: false, error: err.message }));
 
       if (data.success) {
-        setEsp32TriggerMessage('Waiting for ESP32 to record (this takes ~5s)...');
+        setCaptureMessage(t('audio.esp32Waiting'));
 
+        // Held in a ref so switching patient or leaving the page stops
+        // the poll. It used to be a bare local, which kept hitting the
+        // API for another 30 s after the dashboard had moved on.
         let attempts = 0;
-        const interval = setInterval(async () => {
+        esp32PollRef.current = setInterval(async () => {
           attempts++;
           try {
             const patientsRes = await fetchPatients();
             if (patientsRes.success && patientsRes.patients) {
               const updatedPatient = patientsRes.patients.find(p => p.id === patient.id);
               if (updatedPatient && updatedPatient.audioLogs?.[activeAudioTab]?.available) {
-                clearInterval(interval);
+                stopEsp32Poll();
                 setIsTriggeringESP32(false);
-                setEsp32TriggerMessage('');
+                setCaptureMessage('');
                 loadPatients();
                 // The recording is screened server-side on arrival —
                 // pull the result so the dashboard shows it immediately
@@ -626,18 +541,18 @@ function Dashboard() {
           }
 
           if (attempts > 20) {
-            clearInterval(interval);
+            stopEsp32Poll();
             setIsTriggeringESP32(false);
-            setEsp32TriggerMessage('Timeout waiting for ESP32. Please ensure the device is powered on.');
+            setCaptureMessage(t('audio.esp32Timeout'));
           }
         }, 1500);
       } else {
         setIsTriggeringESP32(false);
-        setEsp32TriggerMessage('Failed to trigger ESP32: ' + data.error);
+        setCaptureMessage(t('audio.esp32Failed', { error: data.error }));
       }
     } catch (err) {
       setIsTriggeringESP32(false);
-      setEsp32TriggerMessage('Network error: ' + err.message);
+      setCaptureMessage(t('audio.networkError', { error: err.message }));
     }
   };
 
@@ -677,7 +592,7 @@ function Dashboard() {
           // Transcode to PCM WAV so the analysis engine can actually read
           // it — MediaRecorder emits WebM/Opus or MP4/AAC, neither of
           // which the engine decodes.
-          setEsp32TriggerMessage('Converting recording…');
+          setCaptureMessage(t('audio.stepConverting'));
           const wav = await encodeWavFromBlob(audioBlob);
           const mins = Math.floor(wav.durationSec / 60);
           const secs = Math.round(wav.durationSec % 60);
@@ -697,13 +612,13 @@ function Dashboard() {
             loadPatients();
             loadAnalyses(patient.id);
           } else {
-            alert('Failed to save audio: ' + data.error);
+            setUploadState({ busy: false, message: '', error: data.error || t('audio.saveFailed') });
           }
         } catch (err) {
           console.error(err);
-          alert('Upload failed: ' + err.message);
+          setUploadState({ busy: false, message: '', error: err.message });
         } finally {
-          setEsp32TriggerMessage('');
+          setCaptureMessage('');
         }
       };
 
@@ -728,7 +643,7 @@ function Dashboard() {
       mediaRecorderRef.current.timerInterval = interval;
     } catch (err) {
       console.error('Mic access denied:', err);
-      alert('Cannot access microphone: ' + err.message);
+      setUploadState({ busy: false, message: '', error: t('audio.micDenied', { error: err.message }) });
     }
   };
 
@@ -742,16 +657,11 @@ function Dashboard() {
     }
   };
 
-  // Clean up any playing audio and recording on page unmount
+  // Clean up any playing audio, recording and device poll on unmount
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      if (synthRef.current) {
-        if (synthRef.current.stop) synthRef.current.stop();
-        if (synthRef.current.interval) clearInterval(synthRef.current.interval);
-      }
+      audioRef.current?.pause();
+      stopEsp32Poll();
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
         if (mediaRecorderRef.current.timerInterval) {
@@ -759,26 +669,23 @@ function Dashboard() {
         }
       }
     };
-  }, []);
+  }, [stopEsp32Poll]);
 
-  // Set up edits & reset/cleanup audio/recording when switching patient or tab
+  /**
+   * Reset capture and playback when the clinician moves to another
+   * patient or another recording.
+   *
+   * Keyed on `selectedPatientId`, not on the `patient` object: the
+   * object is replaced on every write to the patient list (saving
+   * vitals, running a screening, uploading audio), and this effect
+   * used to fire on each of those and silently discard whatever the
+   * nurse had typed into the vitals form.
+   */
   useEffect(() => {
-    if (patient && patient.vitals) {
-      setEditedVitals({ ...patient.vitals });
-    } else {
-      setEditedVitals({});
-    }
+    audioRef.current?.pause();
+    audioRef.current = null;
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if (synthRef.current) {
-      if (synthRef.current.stop) synthRef.current.stop();
-      if (synthRef.current.interval) clearInterval(synthRef.current.interval);
-      synthRef.current = null;
-    }
-
+    stopEsp32Poll();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       if (mediaRecorderRef.current.timerInterval) {
@@ -787,11 +694,20 @@ function Dashboard() {
     }
     setIsBrowserRecording(false);
     setIsTriggeringESP32(false);
-    setEsp32TriggerMessage('');
+    setCaptureMessage('');
+    setPlaybackError('');
 
     setIsPlaying(false);
     setPlayProgress(0);
-  }, [selectedPatientId, patient, activeAudioTab]);
+    setIsEditing(false);
+  }, [selectedPatientId, activeAudioTab, stopEsp32Poll]);
+
+  // Seed the vitals form from the record — but never overwrite an edit
+  // in progress, which is what the combined effect above used to do.
+  useEffect(() => {
+    if (isEditing) return;
+    setEditedVitals(patient?.vitals ? { ...patient.vitals } : {});
+  }, [patient, isEditing]);
 
   // Show loading screen while waiting for the API to fetch patients
   if (!patientsLoaded) {
@@ -820,10 +736,10 @@ function Dashboard() {
   const getBMICategory = (bmi) => {
     const val = parseFloat(bmi);
     if (isNaN(val)) return '';
-    if (val < 18.5) return 'Underweight';
-    if (val < 25.0) return 'Normal weight';
-    if (val < 30.0) return 'Overweight';
-    return 'Obese';
+    if (val < 18.5) return t('bmi.under');
+    if (val < 25.0) return t('bmi.normal');
+    if (val < 30.0) return t('bmi.over');
+    return t('bmi.obese');
   };
 
   // Risk semantics → typography & color (single source of truth)
@@ -992,7 +908,7 @@ function Dashboard() {
               <button
                 onClick={onLogout}
                 title={t('header.signOut')}
-                className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                            text-muted hover:text-risk-high hover:border-risk-high/50
                            dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
                            transition-colors duration-200"
@@ -1117,7 +1033,7 @@ function Dashboard() {
             <button
               onClick={() => window.print()}
               title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
-              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                          text-muted hover:text-ink hover:border-ink/50
                          dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
                          transition-colors duration-200"
@@ -1134,7 +1050,7 @@ function Dashboard() {
             <button
               onClick={onLogout}
               title={t('header.signOut')}
-              className="w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                          text-muted hover:text-risk-high hover:border-risk-high/50
                          dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
                          transition-colors duration-200"
@@ -1169,7 +1085,7 @@ function Dashboard() {
                 <button
                   onClick={loadPatients}
                   title={t('queue.refresh')}
-                  className="w-6 h-6 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
+                  className="tap-target w-6 h-6 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
                              text-muted hover:text-ink hover:border-ink/50 dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
                              transition-colors duration-200 group"
                 >
@@ -1182,7 +1098,7 @@ function Dashboard() {
 
               {/* Search */}
               <div className="relative mt-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted/70 dark:text-chalk-muted/70" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted dark:text-chalk-muted" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -1202,10 +1118,10 @@ function Dashboard() {
               </div>
 
               {/* Ordering is a feature, so it is stated, not implied */}
-              <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70 mt-2 leading-relaxed">
+              <p className="note-sm mt-2.5">
                 {t('queue.sortNote')}
                 {totalPendingReview > 0 && (
-                  <span className="text-risk-mod dark:text-risk-modd">
+                  <span className="font-medium text-risk-mod dark:text-risk-modd">
                     {' · '}{t('queue.pendingReview', { n: totalPendingReview })}
                   </span>
                 )}
@@ -1238,30 +1154,36 @@ function Dashboard() {
                       <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-med-600 dark:bg-med-300" />
                     )}
                     <span className="flex items-center gap-3 min-w-0">
-                      <span className={`w-1.5 h-1.5 rounded-[1px] shrink-0 ${r.dot} ${item.riskStatus === 'high' ? 'animate-blink' : ''}`} />
+                      <span className={`w-2 h-2 rounded-[1px] shrink-0 ${r.dot} ${item.riskStatus === 'high' ? 'animate-blink' : ''}`} />
                       <span className="min-w-0">
-                        <span className={`block text-[13px] font-semibold truncate ${
+                        <span className={`block text-sm font-semibold truncate ${
                           isSelected ? 'text-med-700 dark:text-med-300' : 'text-ink dark:text-chalk'
                         }`}>
                           {item.name}
                         </span>
-                        <span className="block font-mono text-[10px] text-muted dark:text-chalk-muted mt-0.5">
+                        <span className="datum block mt-0.5">
                           {t('queue.age')} {item.age ?? '—'} · {item.checkInTime}
                         </span>
                       </span>
                     </span>
                     <span className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`font-mono text-[10px] ${r.text}`}>
+                      <span className={`font-mono text-[11px] font-medium ${r.text}`}>
                         {r.mark && <span className="mr-1">{r.mark}</span>}{r.label}
                       </span>
                       {/* Review state at a glance */}
                       {pending > 0 ? (
-                        <span className="flex items-center gap-1 font-mono text-[9px] text-risk-mod dark:text-risk-modd">
-                          <Clock className="w-2.5 h-2.5" />{pending}
+                        <span
+                          className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-risk-mod dark:text-risk-modd"
+                          title={t('queue.pendingReview', { n: pending })}
+                        >
+                          <Clock className="w-3 h-3" />{pending}
                         </span>
                       ) : signed > 0 ? (
-                        <span className="flex items-center gap-1 font-mono text-[9px] text-med-600 dark:text-med-300">
-                          <ShieldCheck className="w-2.5 h-2.5" />{signed}
+                        <span
+                          className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-med-700 dark:text-med-300"
+                          title={t('queue.signedCount', { n: signed })}
+                        >
+                          <ShieldCheck className="w-3 h-3" />{signed}
                         </span>
                       ) : null}
                     </span>
@@ -1318,14 +1240,17 @@ function Dashboard() {
                 { label: t('demo.gender'), value: ['male','female','other','unspecified'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : (patient.gender ?? '—'), unit: '' },
                 { label: t('demo.weight'), value: patient.weight ?? '—', unit: patient.weight != null ? 'kg' : '' },
                 { label: t('demo.height'), value: patient.height ?? '—', unit: patient.height != null ? 'cm' : '' },
-                { label: 'BMI', value: bmiValue, unit: getBMICategory(bmiValue) },
-              ].map(({ label, value, unit }) => (
+                // The BMI band is a sentence, not a unit — it gets its
+                // own line rather than being crushed in beside the number.
+                { label: 'BMI', value: bmiValue, unit: '', note: getBMICategory(bmiValue) },
+              ].map(({ label, value, unit, note }) => (
                 <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
                   <p className="microlabel">{label}</p>
-                  <p className="text-[15px] font-medium text-ink dark:text-chalk mt-1 tabular-nums">
+                  <p className="text-base font-medium text-ink dark:text-chalk mt-1 tabular-nums">
                     {value}
-                    {unit && <span className="font-mono text-[10px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
+                    {unit && <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
                   </p>
+                  {note && <p className="note-sm mt-0.5">{note}</p>}
                 </div>
               ))}
             </div>
@@ -1353,7 +1278,7 @@ function Dashboard() {
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.spo2')}</p>
                   {(has(v.spo2) && v.spo2 < 95) && (
-                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▼ {t('tag.low')}</span>
+                    <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">▼ {t('tag.low')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -1375,7 +1300,7 @@ function Dashboard() {
                 )}
                 {has(v.spo2) && <TickBar value={v.spo2} min={85} max={100} okMin={95} okMax={100}
                   tone={v.spo2 < 95 ? 'bad' : 'ok'} />}
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 95–100</p>
+                <p className="datum mt-2.5">{t('vitals.ref')} 95–100</p>
               </div>
 
               {/* Heart rate */}
@@ -1383,7 +1308,7 @@ function Dashboard() {
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.hr')}</p>
                   {(has(v.heartRate) && v.heartRate > 100) && (
-                    <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">▲ {t('tag.high')}</span>
+                    <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -1405,7 +1330,7 @@ function Dashboard() {
                 )}
                 {has(v.heartRate) && <TickBar value={v.heartRate} min={40} max={140} okMin={60} okMax={100}
                   tone={v.heartRate > 100 ? 'bad' : 'ok'} />}
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 60–100</p>
+                <p className="datum mt-2.5">{t('vitals.ref')} 60–100</p>
               </div>
 
               {/* Blood pressure */}
@@ -1413,7 +1338,7 @@ function Dashboard() {
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.bp')}</p>
                   {(has(v.systolicBP) && v.systolicBP > 140) && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
+                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -1446,7 +1371,7 @@ function Dashboard() {
                 )}
                 {has(v.systolicBP) && <TickBar value={v.systolicBP} min={80} max={180} okMin={90} okMax={120}
                   tone={v.systolicBP > 140 ? 'warn' : 'ok'} />}
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} &lt;120/80</p>
+                <p className="datum mt-2.5">{t('vitals.ref')} &lt;120/80</p>
               </div>
 
               {/* WBC */}
@@ -1454,7 +1379,7 @@ function Dashboard() {
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.wbc')}</p>
                   {(has(v.wbc) && v.wbc > 11000) && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
+                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -1476,7 +1401,7 @@ function Dashboard() {
                 )}
                 {has(v.wbc) && <TickBar value={v.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
                   tone={v.wbc > 11000 ? 'warn' : 'ok'} />}
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 4,500–11,000</p>
+                <p className="datum mt-2.5">{t('vitals.ref')} 4,500–11,000</p>
               </div>
 
               {/* Hemoglobin */}
@@ -1484,7 +1409,7 @@ function Dashboard() {
                 <div className="flex justify-between items-baseline">
                   <p className="microlabel">{t('vitals.hgb')}</p>
                   {(has(v.hemoglobin) && v.hemoglobin < 12) && (
-                    <span className="font-mono text-[10px] text-risk-mod dark:text-risk-modd">▼ {t('tag.low')}</span>
+                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▼ {t('tag.low')}</span>
                   )}
                 </div>
                 {isEditing ? (
@@ -1507,13 +1432,13 @@ function Dashboard() {
                 )}
                 {has(v.hemoglobin) && <TickBar value={v.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
                   tone={v.hemoglobin < 12 ? 'warn' : 'ok'} />}
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted mt-2">{t('vitals.ref')} 12.0–17.5</p>
+                <p className="datum mt-2.5">{t('vitals.ref')} 12.0–17.5</p>
               </div>
 
               {/* Reserved slot */}
               <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
                 <p className="microlabel">{t('vitals.reserved')}</p>
-                <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-1">{t('vitals.reservedNote')}</p>
+                <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
               </div>
             </div>
           </div>
@@ -1530,7 +1455,9 @@ function Dashboard() {
                       setIsPlaying(false);
                       setPlayProgress(0);
                     }}
-                    className={`text-xs capitalize pb-0.5 border-b transition-colors duration-200 ${
+                    // py-2.5 is not decoration: at pb-0.5 these tabs
+                    // were a 19px-tall tap target on a phone.
+                    className={`text-[13px] capitalize text-center min-w-[2.75rem] px-1 py-2.5 border-b-2 transition-colors duration-200 ${
                       activeAudioTab === tab
                         ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
                         : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
@@ -1554,8 +1481,8 @@ function Dashboard() {
 
               {patient?.audioLogs?.[activeAudioTab]?.available ? (
                 <div>
-                  <div className="flex items-center justify-between font-mono text-[10px] text-muted dark:text-chalk-muted">
-                    <span className="truncate pr-4">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
+                  <div className="flex items-center justify-between gap-4 datum">
+                    <span className="truncate">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
                     <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
@@ -1609,10 +1536,16 @@ function Dashboard() {
                       })()}
                     </div>
 
-                    <span className="font-mono text-[10px] text-white/40 tabular-nums w-9 text-right shrink-0">
+                    <span className="font-mono text-[11px] text-chalk-muted tabular-nums w-9 text-right shrink-0">
                       {playProgress}%
                     </span>
                   </div>
+
+                  {playbackError && (
+                    <p className="note mt-2 !text-risk-high dark:!text-risk-highd">
+                      {playbackError}
+                    </p>
+                  )}
 
                   {/* Manage the stored recording */}
                   <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
@@ -1635,70 +1568,68 @@ function Dashboard() {
                     </button>
 
                     {uploadState.busy && (
-                      <span className="font-mono text-[10px] text-med-600 dark:text-med-300">
+                      <span className="note !text-med-700 dark:!text-med-300">
                         {uploadState.message}
                       </span>
                     )}
                     {!uploadState.busy && uploadState.message && (
-                      <span className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                        {uploadState.message}
-                      </span>
+                      <span className="note">{uploadState.message}</span>
                     )}
                     {uploadState.error && (
-                      <span className="font-mono text-[10px] text-risk-high dark:text-risk-highd">
+                      <span className="note !text-risk-high dark:!text-risk-highd">
                         {uploadState.error}
                       </span>
                     )}
                   </div>
 
-                  <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 mt-2 leading-relaxed">
-                    {t('audio.deleteNote')}
-                  </p>
+                  <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
                 </div>
               ) : (
-                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-6 px-4 text-center">
-                  <p className="microlabel mb-2">{t('audio.none')}</p>
+                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-7 px-4 text-center">
+                  <p className="microlabel mb-2.5">{t('audio.none')}</p>
 
                   {isTriggeringESP32 ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-center gap-2">
                         <span className="w-2.5 h-2.5 bg-med-500 rounded-full animate-ping" />
-                        <span className="font-mono text-xs text-ink dark:text-chalk">ESP32 Action Triggered</span>
+                        <span className="text-[13px] font-medium text-ink dark:text-chalk">
+                          {t('audio.esp32Triggered')}
+                        </span>
                       </div>
-                      <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
-                        {esp32TriggerMessage}
-                      </p>
+                      <p className="note">{captureMessage}</p>
                     </div>
                   ) : isBrowserRecording ? (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-center gap-2">
-                        <span className="w-2.5 h-2.5 bg-risk-high rounded-full animate-pulse" />
-                        <span className="font-mono text-xs text-risk-high">Recording from Browser Mic... ({browserRecordTime}s)</span>
+                        <span className="w-2.5 h-2.5 bg-risk-high dark:bg-risk-highd rounded-full animate-pulse" />
+                        <span className="text-[13px] font-medium text-risk-high dark:text-risk-highd tabular-nums">
+                          {t('audio.recordingNow', { s: browserRecordTime })}
+                        </span>
                       </div>
+                      <p className="note-sm">{t('audio.recordingHint', { max: 10 })}</p>
                       <button
                         onClick={stopBrowserRecording}
-                        className="btn-line border-risk-high text-risk-high hover:bg-risk-high/[0.05]"
+                        className="btn-line !border-risk-high/50 !text-risk-high hover:!bg-risk-high/[0.06]
+                                   dark:!border-risk-highd/50 dark:!text-risk-highd"
                       >
-                        Stop Recording
+                        {t('audio.stopRecording')}
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <p className="font-mono text-[10px] text-muted/70 dark:text-chalk-muted/70">
-                        {t('audio.noneDetail')}
-                      </p>
+                    <div className="space-y-4">
+                      <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
                       <div className="flex flex-wrap justify-center gap-3">
                         <button
                           onClick={triggerESP32Record}
                           disabled={uploadState.busy}
-                          className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
+                          className="btn-line hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
                         >
                           <Mic className="w-3 h-3" /> {t('audio.useEsp32')}
                         </button>
                         <button
                           onClick={startBrowserRecording}
                           disabled={uploadState.busy}
-                          className="btn-line hover:border-risk-mod hover:text-risk-mod disabled:opacity-50"
+                          className="btn-line hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
                         >
                           <Laptop className="w-3 h-3" /> {t('audio.useBrowserMic')}
                         </button>
@@ -1713,19 +1644,15 @@ function Dashboard() {
                       </div>
 
                       {uploadState.busy && (
-                        <p className="font-mono text-[10px] text-med-600 dark:text-med-300">
-                          {uploadState.message}
-                        </p>
+                        <p className="note !text-med-700 dark:!text-med-300">{uploadState.message}</p>
                       )}
                       {uploadState.error && (
-                        <p className="font-mono text-[10px] text-risk-high dark:text-risk-highd max-w-md mx-auto leading-relaxed">
+                        <p className="note !text-risk-high dark:!text-risk-highd max-w-md mx-auto">
                           {uploadState.error}
                         </p>
                       )}
 
-                      <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/60 leading-relaxed">
-                        {t('audio.uploadHint')}
-                      </p>
+                      <p className="note-sm max-w-md mx-auto">{t('audio.uploadHint')}</p>
                     </div>
                   )}
                 </div>
@@ -1764,12 +1691,12 @@ function Dashboard() {
           </div>
 
           {/* Legal position — this is a screening aid, not a diagnosis */}
-          <p className="text-[10px] leading-relaxed text-muted/80 dark:text-chalk-muted/70 border-t border-hairline dark:border-coal-700 pt-3">
+          <p className="note border-t border-hairline dark:border-coal-700 pt-3 max-w-prose">
             {t('disclaimer')}
           </p>
 
           {/* Colophon */}
-          <p className="font-mono text-[10px] text-muted/60 dark:text-chalk-muted/50 text-center uppercase tracking-[0.14em] pb-2 print-hidden">
+          <p className="microlabel text-center pb-2 print-hidden">
             {t('colophon')}
           </p>
         </section>
@@ -1778,21 +1705,21 @@ function Dashboard() {
         <div className="hidden print-footer lg:col-span-3" style={{ display: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '40px', marginTop: '24px' }}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Reviewed by:</p>
+              <p style={{ fontSize: '9pt', color: '#4a4a4a', marginBottom: '32px' }}>Reviewed by:</p>
               <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
                 <p style={{ fontSize: '9pt' }}>Physician name &amp; signature</p>
-                <p style={{ fontSize: '8pt', color: '#999' }}>Date: _____ / _____ / _____</p>
+                <p style={{ fontSize: '8pt', color: '#5c5c5c' }}>Date: _____ / _____ / _____</p>
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '9pt', color: '#666', marginBottom: '32px' }}>Nurse/Staff:</p>
+              <p style={{ fontSize: '9pt', color: '#4a4a4a', marginBottom: '32px' }}>Nurse/Staff:</p>
               <div style={{ borderTop: '1px solid #999', paddingTop: '4px' }}>
                 <p style={{ fontSize: '9pt' }}>Name &amp; signature</p>
-                <p style={{ fontSize: '8pt', color: '#999' }}>Station: _____________</p>
+                <p style={{ fontSize: '8pt', color: '#5c5c5c' }}>Station: _____________</p>
               </div>
             </div>
           </div>
-          <p style={{ fontSize: '7pt', color: '#aaa', textAlign: 'center', marginTop: '16px' }}>
+          <p style={{ fontSize: '8pt', color: '#5c5c5c', textAlign: 'center', marginTop: '16px' }}>
             WellSim Clinical Triage System — AI screening results require physician verification before clinical action.
           </p>
         </div>
