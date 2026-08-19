@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, RefreshCw, Pencil, Check, Upload, Printer, Mic, Play, Pause, Trash2, Laptop } from 'lucide-react';
+import { LogOut, RefreshCw, Pencil, Check, Upload, Printer, Mic, Play, Pause, Trash2, Laptop, CheckCircle, Clock, AlertTriangle, Info } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
 import { useLang } from '../../i18n/LanguageContext';
@@ -444,23 +444,23 @@ export default function PortalPage() {
   const vitalRows = [
     {
       label: t('vitals.spo2'), value: has(v.spo2) ? v.spo2 : null, unit: '%', ref: '95–100',
-      bad: has(v.spo2) && v.spo2 < 95, mark: '▼', bar: has(v.spo2) ? { value: v.spo2, min: 85, max: 100, okMin: 95, okMax: 100, tone: v.spo2 < 95 ? 'bad' : 'ok' } : null
+      bad: has(v.spo2) && v.spo2 < 95, tone: 'bad', mark: '▼', bar: has(v.spo2) ? { value: v.spo2, min: 85, max: 100, okMin: 95, okMax: 100, tone: v.spo2 < 95 ? 'bad' : 'ok' } : null
     },
     {
       label: t('vitals.hr'), value: has(v.heartRate) ? v.heartRate : null, unit: 'bpm', ref: '60–100',
-      bad: has(v.heartRate) && v.heartRate > 100, mark: '▲', bar: has(v.heartRate) ? { value: v.heartRate, min: 40, max: 140, okMin: 60, okMax: 100, tone: v.heartRate > 100 ? 'bad' : 'ok' } : null
+      bad: has(v.heartRate) && v.heartRate > 100, tone: 'bad', mark: '▲', bar: has(v.heartRate) ? { value: v.heartRate, min: 40, max: 140, okMin: 60, okMax: 100, tone: v.heartRate > 100 ? 'bad' : 'ok' } : null
     },
     {
       label: t('vitals.bp'), value: has(v.systolicBP) ? `${v.systolicBP}/${has(v.diastolicBP) ? v.diastolicBP : '—'}` : null, unit: 'mmHg', ref: '<120/80',
-      bad: has(v.systolicBP) && v.systolicBP > 140, mark: '▲', bar: has(v.systolicBP) ? { value: v.systolicBP, min: 80, max: 180, okMin: 90, okMax: 120, tone: v.systolicBP > 140 ? 'warn' : 'ok' } : null
+      bad: has(v.systolicBP) && v.systolicBP > 140, tone: 'warn', mark: '▲', bar: has(v.systolicBP) ? { value: v.systolicBP, min: 80, max: 180, okMin: 90, okMax: 120, tone: v.systolicBP > 140 ? 'warn' : 'ok' } : null
     },
     {
       label: t('vitals.wbc'), value: has(v.wbc) ? v.wbc.toLocaleString() : null, unit: '/mcL', ref: '4,500–11,000',
-      bad: has(v.wbc) && v.wbc > 11000, mark: '▲', bar: has(v.wbc) ? { value: v.wbc, min: 2000, max: 20000, okMin: 4500, okMax: 11000, tone: v.wbc > 11000 ? 'warn' : 'ok' } : null
+      bad: has(v.wbc) && v.wbc > 11000, tone: 'warn', mark: '▲', bar: has(v.wbc) ? { value: v.wbc, min: 2000, max: 20000, okMin: 4500, okMax: 11000, tone: v.wbc > 11000 ? 'warn' : 'ok' } : null
     },
     {
       label: t('vitals.hgb'), value: has(v.hemoglobin) ? v.hemoglobin : null, unit: 'g/dL', ref: '12.0–17.5',
-      bad: has(v.hemoglobin) && v.hemoglobin < 12, mark: '▼', bar: has(v.hemoglobin) ? { value: v.hemoglobin, min: 8, max: 20, okMin: 12, okMax: 17.5, tone: v.hemoglobin < 12 ? 'warn' : 'ok' } : null
+      bad: has(v.hemoglobin) && v.hemoglobin < 12, tone: 'warn', mark: '▼', bar: has(v.hemoglobin) ? { value: v.hemoglobin, min: 8, max: 20, okMin: 12, okMax: 17.5, tone: v.hemoglobin < 12 ? 'warn' : 'ok' } : null
     },
   ];
 
@@ -705,19 +705,48 @@ export default function PortalPage() {
             {/* Vitals */}
             <div className="card p-5 will-fade-up animate-delay-100">
               <SectionHead index="01" title={t('vitals.title')} />
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-4">
+
+              {/* Abnormal count summary */}
+              {(() => {
+                const abnormalCount = vitalRows.filter(r => r.bad && r.value != null).length;
+                const measuredCount = vitalRows.filter(r => r.value != null).length;
+                if (measuredCount === 0) {
+                  return <p className="note mt-3">{t('portal.vitalsNone')}</p>;
+                }
+                return (
+                  <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                    abnormalCount > 0
+                      ? 'bg-risk-mod/[0.08] dark:bg-risk-modd/[0.10] text-risk-mod dark:text-risk-modd border border-risk-mod/20 dark:border-risk-modd/25'
+                      : 'bg-risk-low/[0.07] dark:bg-risk-lowd/[0.09] text-risk-low dark:text-risk-lowd border border-risk-low/20 dark:border-risk-lowd/25'
+                  }`}>
+                    {abnormalCount > 0 ? (
+                      <><AlertTriangle className="w-3.5 h-3.5" /> {t('portal.vitalsAbnormal', { n: abnormalCount })}</>
+                    ) : (
+                      <><CheckCircle className="w-3.5 h-3.5" /> {t('portal.vitalsAllNormal')}</>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-3">
                 {vitalRows.map((row) => (
-                  <div key={row.label} className="bg-surface dark:bg-coal-900 p-4">
+                  <div key={row.label} className={`bg-surface dark:bg-coal-900 p-4 ${row.bad ? 'relative' : ''}`}>
+                    {row.bad && <span className="absolute top-0 left-0 right-0 h-[2px] bg-risk-mod dark:bg-risk-modd" />}
                     <div className="flex justify-between items-baseline">
                       <p className="microlabel">{row.label}</p>
                       {row.bad && (
-                        <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">
+                        <span className={`font-mono text-[11px] font-medium ${
+                          row.tone === 'bad' ? 'text-risk-high dark:text-risk-highd' : 'text-risk-mod dark:text-risk-modd'
+                        }`}>
                           {row.mark} {row.mark === '▲' ? t('tag.high') : t('tag.low')}
                         </span>
                       )}
                     </div>
-                    <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${row.bad ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
-                      }`}>
+                    <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
+                      row.bad
+                        ? row.tone === 'bad' ? 'text-risk-high dark:text-risk-highd' : 'text-risk-mod dark:text-risk-modd'
+                        : 'text-ink dark:text-chalk'
+                    }`}>
                       {row.value ?? '—'}
                       {row.value != null && (
                         <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{row.unit}</span>
@@ -733,69 +762,113 @@ export default function PortalPage() {
               </div>
             </div>
 
-            {/* AI risk + findings */}
+            {/* Overall status — plain language, replaces the bare risk % dial */}
             <div className="card p-5 will-fade-up animate-delay-200">
-              <SectionHead index="02" title={t('ai.title')} />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center mt-5">
-                <div className="flex flex-col items-center md:border-r border-hairline dark:border-coal-700 py-2">
-                  <div className="relative w-32 h-32">
-                    <svg viewBox="0 0 144 144" className="w-full h-full">
-                      {Array.from({ length: 24 }).map((_, i) => (
-                        <line
-                          key={i}
-                          x1="72" y1="4" x2="72" y2={i % 6 === 0 ? '10' : '7'}
-                          transform={`rotate(${i * 15} 72 72)`}
-                          className="stroke-hairline-strong dark:stroke-coal-600"
-                          strokeWidth="1"
-                        />
-                      ))}
-                      <g transform="rotate(-90 72 72)">
-                        <circle cx="72" cy="72" r="54" strokeWidth="4"
-                          className="stroke-hairline dark:stroke-coal-700" fill="transparent" />
-                        <circle
-                          cx="72" cy="72" r="54" strokeWidth="4"
-                          strokeDasharray={2 * Math.PI * 54}
-                          strokeDashoffset={2 * Math.PI * 54 * (1 - (isPending ? 0 : (record.riskScore || 0)) / 100)}
-                          className={`${risk.stroke} transition-all duration-1000 ease-out`}
-                          fill="transparent"
-                        />
-                      </g>
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-3xl font-light tabular-nums text-ink dark:text-chalk leading-none">
-                        {isPending ? '—' : (
-                          <>
-                            {record.riskScore || 0}
-                            <span className="font-mono text-sm text-muted dark:text-chalk-muted ml-0.5">%</span>
-                          </>
-                        )}
-                      </span>
-                      <span className="microlabel mt-1.5">{t('ai.probability')}</span>
+              <SectionHead index="02" title={t('portal.statusHeading')} />
+              {(() => {
+                // Derive an overall status from all available analyses
+                const hasAny = Object.keys(analyses).length > 0;
+                const anyUnsigned = Object.values(analyses).some(a => a?.review?.status === 'pending' || !a?.review);
+                const allSigned = hasAny && !anyUnsigned;
+                const hasUrgent = record?.riskStatus === 'high' || Object.values(analyses).some(a => {
+                  const triage = a?.review?.finalTriage || a?.triage?.level;
+                  return triage === 'red';
+                });
+                const hasPending = hasAny && anyUnsigned;
+                const noAudio = !hasAny && !Object.values(record?.audioLogs || {}).some(l => l?.available);
+
+                let icon, heading, detail, stripCls, iconCls;
+                if (hasUrgent && allSigned) {
+                  icon = <AlertTriangle className={`w-5 h-5 shrink-0 ${iconCls}`} />;
+                  heading = t('portal.statusUrgent');
+                  detail = t('portal.statusUrgentDetail');
+                  stripCls = 'bg-risk-high/[0.06] dark:bg-risk-highd/[0.08] border-risk-high/30 dark:border-risk-highd/30';
+                  iconCls = 'text-risk-high dark:text-risk-highd';
+                } else if (allSigned) {
+                  icon = <CheckCircle className="w-5 h-5 shrink-0 text-risk-low dark:text-risk-lowd" />;
+                  heading = t('portal.statusReviewed');
+                  detail = t('portal.statusReviewedDetail');
+                  stripCls = 'bg-risk-low/[0.05] dark:bg-risk-lowd/[0.07] border-risk-low/30 dark:border-risk-lowd/30';
+                  iconCls = 'text-risk-low dark:text-risk-lowd';
+                } else if (hasPending) {
+                  icon = <Clock className="w-5 h-5 shrink-0 text-risk-mod dark:text-risk-modd animate-blink" />;
+                  heading = t('portal.statusPending');
+                  detail = t('portal.statusPendingDetail');
+                  stripCls = 'bg-risk-mod/[0.05] dark:bg-risk-modd/[0.07] border-risk-mod/30 dark:border-risk-modd/30';
+                  iconCls = 'text-risk-mod dark:text-risk-modd';
+                } else {
+                  icon = <Info className="w-5 h-5 shrink-0 text-muted dark:text-chalk-muted" />;
+                  heading = t('portal.statusNotScreened');
+                  detail = t('portal.statusNotScreenedDetail');
+                  stripCls = 'bg-paper dark:bg-coal-900 border-hairline dark:border-coal-700';
+                  iconCls = 'text-muted dark:text-chalk-muted';
+                }
+
+                return (
+                  <div className={`mt-4 flex items-start gap-4 rounded-md border p-4 ${stripCls}`}>
+                    <div className="mt-0.5 shrink-0">{icon}</div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-semibold text-ink dark:text-chalk leading-snug">{heading}</p>
+                      <p className="note mt-1 leading-relaxed">{detail}</p>
                     </div>
                   </div>
-                  <p className={`font-mono text-[11px] mt-3 ${risk.text}`}>
-                    {risk.mark && <span className="mr-1">{risk.mark}</span>}{t('ai.riskLine', { label: risk.label })}
-                  </p>
-                </div>
+                );
+              })()}
 
-                <div className="md:col-span-2">
-                  <p className="microlabel">{t('ai.biomarkers')}</p>
-                  {(record.findings || []).length > 0 ? (
-                    <ul className="mt-2 divide-y divide-hairline dark:divide-coal-700">
-                      {record.findings.map((finding, idx) => (
-                        <li key={idx} className="flex items-start gap-3 py-2.5">
-                          <span className="list-index w-5 shrink-0 pt-0.5">
-                            {String(idx + 1).padStart(2, '0')}
-                          </span>
-                          <span className="prose-clinical">{td(finding)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="note mt-3">{t('portal.findingsNone')}</p>
-                  )}
+              {/* Risk gauge row — condensed below the status message */}
+              {record && (
+                <div className="mt-4 pt-4 border-t border-hairline dark:border-coal-700 grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+                  {/* Mini gauge */}
+                  <div className="flex flex-col items-center py-1 md:border-r border-hairline dark:border-coal-700">
+                    <div className="relative w-20 h-20">
+                      <svg viewBox="0 0 144 144" className="w-full h-full">
+                        {Array.from({ length: 24 }).map((_, i) => (
+                          <line key={i} x1="72" y1="4" x2="72" y2={i % 6 === 0 ? '10' : '7'}
+                            transform={`rotate(${i * 15} 72 72)`}
+                            className="stroke-hairline-strong dark:stroke-coal-600" strokeWidth="1" />
+                        ))}
+                        <g transform="rotate(-90 72 72)">
+                          <circle cx="72" cy="72" r="54" strokeWidth="4"
+                            className="stroke-hairline dark:stroke-coal-700" fill="transparent" />
+                          <circle cx="72" cy="72" r="54" strokeWidth="4"
+                            strokeDasharray={2 * Math.PI * 54}
+                            strokeDashoffset={2 * Math.PI * 54 * (1 - (isPending ? 0 : (record.riskScore || 0)) / 100)}
+                            className={`${risk.stroke} transition-all duration-1000 ease-out`}
+                            fill="transparent" />
+                        </g>
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-xl font-light tabular-nums text-ink dark:text-chalk leading-none">
+                          {isPending ? '—' : `${record.riskScore || 0}`}
+                        </span>
+                        <span className="font-mono text-[9px] uppercase tracking-wider text-muted dark:text-chalk-muted mt-0.5">%</span>
+                      </div>
+                    </div>
+                    <p className={`font-mono text-[10px] mt-1.5 text-center ${risk.text}`}>
+                      {risk.mark && <span className="mr-1">{risk.mark}</span>}
+                      {t('ai.riskLine', { label: risk.label })}
+                    </p>
+                    <p className="note-sm mt-1 text-center">{t('ai.probability')}</p>
+                  </div>
+
+                  {/* Biomarkers / findings */}
+                  <div className="md:col-span-2">
+                    <p className="microlabel mb-2">{t('ai.biomarkers')}</p>
+                    {(record.findings || []).length > 0 ? (
+                      <ul className="divide-y divide-hairline dark:divide-coal-700">
+                        {record.findings.map((finding, idx) => (
+                          <li key={idx} className="flex items-start gap-3 py-2">
+                            <span className="list-index w-5 shrink-0 pt-0.5">{String(idx + 1).padStart(2, '0')}</span>
+                            <span className="prose-clinical">{td(finding)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="note">{t('portal.findingsNone')}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Recordings — 3-type audio recording & playback */}
@@ -996,20 +1069,17 @@ export default function PortalPage() {
               <SectionHead index="04" title={t('portal.review.title')} />
 
               {Object.keys(analyses).length === 0 ? (
-                <div className="mt-4 text-center py-6 border border-dashed border-hairline-strong dark:border-coal-600 rounded">
+                <div className="mt-4 text-center py-8 border border-dashed border-hairline-strong dark:border-coal-600 rounded">
                   <p className="microlabel">{t('portal.review.noAnalysis')}</p>
-                  <p className="note mt-1.5">{t('portal.review.noAnalysisDetail')}</p>
+                  <p className="note mt-1.5 max-w-xs mx-auto">{t('portal.review.noAnalysisDetail')}</p>
                 </div>
               ) : (
-                <div className="mt-4 flex flex-col gap-3">
+                <div className="mt-4 flex flex-col gap-4">
                   {['lung', 'heart', 'cough'].map((type) => {
                     const a = analyses[type];
                     const audioLog = record?.audioLogs?.[type];
 
-                    // No audio at all → no analysis possible
-                    if (!audioLog?.available && !a) {
-                      return null;
-                    }
+                    if (!audioLog?.available && !a) return null;
 
                     const reviewStatus = a?.review?.status || 'pending';
                     const isConfirmed = reviewStatus === 'confirmed';
@@ -1017,26 +1087,48 @@ export default function PortalPage() {
                     const isRejected  = reviewStatus === 'rejected';
                     const isDoctorSigned = isConfirmed || isModified || isRejected;
 
+                    // Status chip config
                     const statusCfg = {
-                      pending:   { label: t('portal.review.pending'),   dot: 'bg-risk-mod dark:bg-risk-modd',   text: 'text-risk-mod dark:text-risk-modd' },
-                      confirmed: { label: t('portal.review.confirmed'), dot: 'bg-risk-low dark:bg-risk-lowd',   text: 'text-risk-low dark:text-risk-lowd' },
-                      modified:  { label: t('portal.review.modified'),  dot: 'bg-med-500 dark:bg-med-400',      text: 'text-med-600 dark:text-med-300' },
-                      rejected:  { label: t('portal.review.rejected'),  dot: 'bg-muted/60 dark:bg-chalk-muted/60', text: 'text-muted dark:text-chalk-muted' },
+                      pending:   {
+                        label: t('portal.review.pending'),
+                        dot: 'bg-risk-mod dark:bg-risk-modd',
+                        text: 'text-risk-mod dark:text-risk-modd',
+                        bg: 'bg-risk-mod/[0.05] dark:bg-risk-modd/[0.07]',
+                        border: 'border-risk-mod/20 dark:border-risk-modd/25',
+                      },
+                      confirmed: {
+                        label: t('portal.review.confirmed'),
+                        dot: 'bg-risk-low dark:bg-risk-lowd',
+                        text: 'text-risk-low dark:text-risk-lowd',
+                        bg: 'bg-risk-low/[0.05] dark:bg-risk-lowd/[0.07]',
+                        border: 'border-risk-low/20 dark:border-risk-lowd/25',
+                      },
+                      modified:  {
+                        label: t('portal.review.modified'),
+                        dot: 'bg-med-500 dark:bg-med-400',
+                        text: 'text-med-600 dark:text-med-300',
+                        bg: 'bg-med-500/[0.05] dark:bg-med-400/[0.07]',
+                        border: 'border-med-500/20 dark:border-med-400/25',
+                      },
+                      rejected:  {
+                        label: t('portal.review.rejected'),
+                        dot: 'bg-muted/60 dark:bg-chalk-muted/60',
+                        text: 'text-muted dark:text-chalk-muted',
+                        bg: 'bg-paper dark:bg-coal-900',
+                        border: 'border-hairline dark:border-coal-700',
+                      },
                     };
                     const cfg = statusCfg[reviewStatus] || statusCfg.pending;
 
                     const triageLabel = (level) => {
-                      if (level === 'red')    return { text: t('portal.review.triageRed'),    cls: 'text-risk-high dark:text-risk-highd' };
-                      if (level === 'yellow') return { text: t('portal.review.triageYellow'), cls: 'text-risk-mod dark:text-risk-modd' };
-                      if (level === 'green')  return { text: t('portal.review.triageGreen'),  cls: 'text-risk-low dark:text-risk-lowd' };
-                      return { text: '—', cls: 'text-muted dark:text-chalk-muted' };
+                      if (level === 'red')    return { text: t('portal.review.triageRed'),    cls: 'text-risk-high dark:text-risk-highd bg-risk-high/[0.06] dark:bg-risk-highd/[0.08] border-risk-high/30 dark:border-risk-highd/30' };
+                      if (level === 'yellow') return { text: t('portal.review.triageYellow'), cls: 'text-risk-mod dark:text-risk-modd bg-risk-mod/[0.06] dark:bg-risk-modd/[0.08] border-risk-mod/30 dark:border-risk-modd/30' };
+                      if (level === 'green')  return { text: t('portal.review.triageGreen'),  cls: 'text-risk-low dark:text-risk-lowd bg-risk-low/[0.06] dark:bg-risk-lowd/[0.08] border-risk-low/30 dark:border-risk-lowd/30' };
+                      return { text: '—', cls: 'text-muted dark:text-chalk-muted bg-paper dark:bg-coal-900 border-hairline dark:border-coal-700' };
                     };
 
-                    // Display label/triage: doctor's word > AI word.
-                    // The label is an engine key (`wheeze_and_crackles`)
-                    // and must be translated before a patient sees it.
-                    const displayKey    = (isModified || isConfirmed) ? (a.review.finalLabel  || a.label)  : (isRejected ? null : a?.label);
-                    const displayTriage = (isModified || isConfirmed) ? (a.review.finalTriage || a.triage)  : (isRejected ? null : a?.triage);
+                    const displayKey    = (isModified || isConfirmed) ? (a?.review?.finalLabel  || a?.label)  : (isRejected ? null : a?.label);
+                    const displayTriage = (isModified || isConfirmed) ? (a?.review?.finalTriage || a?.triage?.level)  : (isRejected ? null : a?.triage?.level);
                     const displayLabel  = displayKey ? clinicalLabel(displayKey, lang) : null;
                     const triage = triageLabel(displayTriage);
 
@@ -1047,78 +1139,87 @@ export default function PortalPage() {
                         )
                       : null;
 
+                    // Plain-language explanation for each review status
+                    const explainKey = isConfirmed ? 'portal.review.confirmedExplain'
+                      : isModified ? 'portal.review.modifiedExplain'
+                      : isRejected ? 'portal.review.rejectedExplain'
+                      : 'portal.review.pendingExplain';
+
                     return (
-                      <div key={type} className="border border-hairline dark:border-coal-700 rounded overflow-hidden">
-                        {/* Header row */}
-                        <div className="flex items-center justify-between px-4 py-2.5 bg-surface dark:bg-coal-900 border-b border-hairline dark:border-coal-700">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                            <p className="text-xs font-semibold text-ink dark:text-chalk capitalize">
-                              {t('audio.' + type)}
+                      <div key={type} className={`border rounded-md overflow-hidden ${cfg.border} ${cfg.bg}`}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-hairline dark:border-coal-700 bg-surface dark:bg-coal-900">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+                            <p className="text-sm font-semibold text-ink dark:text-chalk capitalize">
+                              {t('audio.' + type)} {t('audio.title').split(' ')[0]}
                             </p>
                           </div>
-                          <span className={`font-mono text-[11px] font-semibold ${cfg.text}`}>
+                          <span className={`font-mono text-[11px] font-medium ${cfg.text}`}>
                             {cfg.label}
                           </span>
                         </div>
 
                         {/* Body */}
-                        <div className="px-4 py-3 bg-paper dark:bg-coal-950 flex flex-col gap-2.5">
+                        <div className="px-4 py-4 flex flex-col gap-3">
                           {!a ? (
-                            // Audio exists but hasn't been screened yet
-                            <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                              {t('ai.noResult')}
-                            </p>
+                            <p className="note">{t('ai.noResult')}</p>
                           ) : isRejected ? (
-                            // Doctor rejected the AI result
-                            <div className="flex flex-col gap-1.5">
-                              <p className="font-mono text-[10px] text-muted dark:text-chalk-muted">
-                                {t('ai.aiSaidRejected')}
-                              </p>
+                            <div className="flex flex-col gap-2">
+                              <p className="prose-clinical">{t('portal.review.rejectedExplain')}</p>
                               {a.review?.note && (
-                                <div className="bg-ink/[0.04] dark:bg-coal-800 rounded px-3 py-2 mt-1">
+                                <div className="bg-surface dark:bg-coal-850 border border-hairline dark:border-coal-700 rounded px-3 py-2.5">
                                   <p className="microlabel mb-1">{t('portal.review.doctorNote')}</p>
-                                  <p className="prose-clinical">{a.review.note}</p>
+                                  <p className="prose-clinical italic">"{a.review.note}"</p>
                                 </div>
                               )}
                             </div>
                           ) : (
-                            // AI result (+ doctor overlay if signed)
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <p className="microlabel mb-1">
-                                  {isDoctorSigned ? t('portal.review.diagnosis') : t('portal.review.aiResult')}
-                                </p>
-                                <p className="text-sm font-medium text-ink dark:text-chalk">
-                                  {displayLabel || '—'}
-                                </p>
-                                {isModified && a.label && a.label !== displayKey && (
-                                  <p className="note-sm mt-1 line-through">
-                                    {clinicalLabel(a.label, lang)}
-                                  </p>
-                                )}
-                              </div>
-                              <div>
-                                <p className="microlabel mb-1">{t('portal.review.triage')}</p>
-                                <p className={`text-sm font-semibold ${triage.cls}`}>
-                                  {triage.text}
-                                </p>
-                              </div>
-                            </div>
+                            <>
+                              {/* Finding + triage level */}
+                              {displayLabel && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <p className="microlabel mb-1.5">
+                                      {isDoctorSigned ? t('portal.review.diagnosis') : t('portal.review.aiResult')}
+                                    </p>
+                                    <p className="text-[15px] font-semibold text-ink dark:text-chalk leading-snug">
+                                      {displayLabel}
+                                    </p>
+                                    {isModified && a?.label && a.label !== displayKey && (
+                                      <p className="note-sm mt-1 line-through text-muted dark:text-chalk-muted">
+                                        {clinicalLabel(a.label, lang)}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {displayTriage && (
+                                    <div>
+                                      <p className="microlabel mb-1.5">{t('portal.review.triage')}</p>
+                                      <span className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded border ${triage.cls}`}>
+                                        {triage.text}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Plain-language explanation */}
+                              <p className="note leading-relaxed">{t(explainKey)}</p>
+                            </>
                           )}
 
-                          {/* Doctor sign-off line */}
-                          {isDoctorSigned && a.review?.doctorName && (
-                            <div className="pt-2 mt-1 border-t border-hairline dark:border-coal-700 flex flex-wrap items-center gap-1.5">
-                              <span className={`inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-full border ${
+                          {/* Doctor sign-off */}
+                          {isDoctorSigned && a?.review?.doctorName && (
+                            <div className="pt-2.5 mt-0.5 border-t border-hairline dark:border-coal-700 flex flex-wrap items-center gap-2">
+                              <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-1 rounded-full border ${
                                 isConfirmed
-                                  ? 'border-risk-low/40 text-risk-low dark:text-risk-lowd dark:border-risk-lowd/40 bg-risk-low/[0.06] dark:bg-risk-lowd/[0.07]'
+                                  ? 'border-risk-low/40 text-risk-low dark:text-risk-lowd dark:border-risk-lowd/40 bg-risk-low/[0.06]'
                                   : isModified
                                     ? 'border-med-500/40 text-med-600 dark:text-med-300 dark:border-med-400/40 bg-med-500/[0.06]'
                                     : 'border-muted/30 text-muted dark:text-chalk-muted bg-hairline/50 dark:bg-coal-800'
                               }`}>
-                                {isConfirmed ? '✓' : isModified ? '✎' : '✕'}
-                                &nbsp;{a.review.doctorName}
+                                {isConfirmed ? <Check className="w-3 h-3" /> : isModified ? <Pencil className="w-3 h-3" /> : null}
+                                {a.review.doctorName}
                               </span>
                               {reviewedAtStr && (
                                 <span className="datum">{t('portal.review.reviewedAt')} {reviewedAtStr}</span>
@@ -1126,9 +1227,12 @@ export default function PortalPage() {
                             </div>
                           )}
 
-                          {/* Pending notice */}
+                          {/* Pending callout — prominent, not 11px note */}
                           {!isDoctorSigned && a && reviewStatus === 'pending' && (
-                            <p className="note-sm">{t('portal.review.pendingDetail')}</p>
+                            <div className="flex items-start gap-2.5 bg-risk-mod/[0.05] dark:bg-risk-modd/[0.07] border border-risk-mod/20 dark:border-risk-modd/25 rounded px-3 py-2.5 mt-1">
+                              <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-risk-mod dark:text-risk-modd animate-blink" />
+                              <p className="text-[12px] leading-relaxed text-ink dark:text-chalk">{t('portal.pendingCallout')}</p>
+                            </div>
                           )}
                         </div>
                       </div>

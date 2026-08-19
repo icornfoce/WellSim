@@ -31,6 +31,10 @@ import {
   Upload,
   Mic,
   Laptop,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  CheckCircle,
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
@@ -174,6 +178,8 @@ function Dashboard() {
   // Queue search
   const [searchQuery, setSearchQuery] = useState('');
 
+  // AI panel — collapsed summary mode for faster scanning
+  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
   // Dark mode drives the spectrogram colour ramp
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
@@ -700,6 +706,7 @@ function Dashboard() {
     setIsPlaying(false);
     setPlayProgress(0);
     setIsEditing(false);
+    setAiPanelCollapsed(false);
   }, [selectedPatientId, activeAudioTab, stopEsp32Poll]);
 
   // Seed the vitals form from the record — but never overwrite an edit
@@ -1207,6 +1214,43 @@ function Dashboard() {
                 <h1 className="text-[28px] font-light tracking-tight text-ink dark:text-chalk mt-1 leading-tight">
                   {patient.name}
                 </h1>
+                {/* Status strip — triage chip + quick stats */}
+                <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                  {/* Triage chip */}
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-semibold font-mono border ${
+                    patient.riskStatus === 'high'
+                      ? 'bg-risk-high/[0.07] text-risk-high dark:text-risk-highd border-risk-high/30 dark:border-risk-highd/30 dark:bg-risk-highd/[0.09]'
+                      : patient.riskStatus === 'moderate'
+                        ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/30 dark:border-risk-modd/30 dark:bg-risk-modd/[0.09]'
+                        : patient.riskStatus === 'low'
+                          ? 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/30 dark:border-risk-lowd/30 dark:bg-risk-lowd/[0.09]'
+                          : 'bg-paper dark:bg-coal-800 text-muted dark:text-chalk-muted border-hairline dark:border-coal-700'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-[1px] ${risk.dot} ${patient.riskStatus === 'high' ? 'animate-blink' : ''}`} />
+                    {risk.label}
+                  </span>
+                  {/* Check-in time */}
+                  <span className="datum flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" />
+                    {patient.checkInTime || '—'}
+                  </span>
+                  {/* Recording count */}
+                  {(() => {
+                    const recorded = ['lung', 'heart', 'cough'].filter(k => patient?.audioLogs?.[k]?.available).length;
+                    return (
+                      <span className="datum">
+                        {recorded}/3 {t('audio.title').toLowerCase()}
+                      </span>
+                    );
+                  })()}
+                  {/* Pending review indicator */}
+                  {(patient.reviewSummary?.pending || 0) > 0 && (
+                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-risk-mod dark:text-risk-modd">
+                      <Clock className="w-3 h-3" />
+                      {t('queue.pendingReview', { n: patient.reviewSummary.pending })}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1223,13 +1267,6 @@ function Dashboard() {
                 >
                   <Trash2 className="w-3 h-3" /> {t('common.delete')}
                 </button>
-                <span className="w-px h-6 bg-hairline dark:bg-coal-700 mx-1" />
-                <div className="text-right">
-                  <p className="microlabel">{t('record.aiRisk')}</p>
-                  <p className={`font-mono text-xs mt-0.5 ${risk.text}`}>
-                    {risk.mark && <span className="mr-1">{risk.mark}</span>}{risk.label}
-                  </p>
-                </div>
               </div>
             </div>
 
@@ -1271,7 +1308,33 @@ function Dashboard() {
               )}
             </SectionHead>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-4">
+            {/* Abnormal summary chip */}
+            {!isEditing && (() => {
+              const vals = [
+                { ok: !has(v.spo2) || v.spo2 >= 95 },
+                { ok: !has(v.heartRate) || v.heartRate <= 100 },
+                { ok: !has(v.systolicBP) || v.systolicBP <= 140 },
+                { ok: !has(v.wbc) || v.wbc <= 11000 },
+                { ok: !has(v.hemoglobin) || v.hemoglobin >= 12 },
+              ];
+              const abnormal = vals.filter(x => !x.ok).length;
+              const measured = [v.spo2, v.heartRate, v.systolicBP, v.wbc, v.hemoglobin].filter(x => has(x)).length;
+              if (measured === 0) return null;
+              return (
+                <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                  abnormal > 0
+                    ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/20 dark:border-risk-modd/25 dark:bg-risk-modd/[0.09]'
+                    : 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/20 dark:border-risk-lowd/25 dark:bg-risk-lowd/[0.09]'
+                }`}>
+                  {abnormal > 0
+                    ? <><AlertTriangle className="w-3 h-3" /> {t('portal.vitalsAbnormal', { n: abnormal })}</>
+                    : <><CheckCircle className="w-3 h-3" /> {t('portal.vitalsAllNormal')}</>
+                  }
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-3">
 
               {/* SpO2 */}
               <div className="bg-surface dark:bg-coal-900 p-4">
@@ -1618,29 +1681,54 @@ function Dashboard() {
                   ) : (
                     <div className="space-y-4">
                       <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
-                      <div className="flex flex-wrap justify-center gap-3">
-                        <button
-                          onClick={triggerESP32Record}
-                          disabled={uploadState.busy}
-                          className="btn-line hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
-                        >
-                          <Mic className="w-3 h-3" /> {t('audio.useEsp32')}
-                        </button>
-                        <button
-                          onClick={startBrowserRecording}
-                          disabled={uploadState.busy}
-                          className="btn-line hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
-                        >
-                          <Laptop className="w-3 h-3" /> {t('audio.useBrowserMic')}
-                        </button>
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadState.busy}
-                          className="btn-ink disabled:opacity-50"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
-                        </button>
+
+                      {/* Tiered capture options — priority order */}
+                      <div className="flex flex-col gap-2 max-w-sm mx-auto text-left">
+                        <p className="microlabel text-center mb-1">{t('audio.captureGuideTitle')}</p>
+
+                        {/* Option 1: ESP32 — preferred */}
+                        <div className="border border-hairline dark:border-coal-700 rounded-md overflow-hidden">
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-ink/[0.03] dark:bg-coal-800 border-b border-hairline dark:border-coal-700">
+                            <p className="font-mono text-[9px] uppercase tracking-wider text-med-600 dark:text-med-300">
+                              {t('audio.captureGuide1').split(':')[0]}
+                            </p>
+                          </div>
+                          <div className="px-3 py-2.5">
+                            <button
+                              onClick={triggerESP32Record}
+                              disabled={uploadState.busy}
+                              className="btn-ink w-full disabled:opacity-50"
+                            >
+                              <Mic className="w-3.5 h-3.5" /> {t('audio.useEsp32')}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Options 2 & 3: browser mic + upload */}
+                        <div className="border border-hairline dark:border-coal-700 rounded-md overflow-hidden">
+                          <div className="flex items-center px-3 py-1.5 bg-ink/[0.03] dark:bg-coal-800 border-b border-hairline dark:border-coal-700">
+                            <p className="font-mono text-[9px] uppercase tracking-wider text-muted dark:text-chalk-muted">
+                              {lang === 'th' ? 'ทางเลือกอื่น' : 'Alternatives'}
+                            </p>
+                          </div>
+                          <div className="px-3 py-2.5 flex flex-wrap gap-2">
+                            <button
+                              onClick={startBrowserRecording}
+                              disabled={uploadState.busy}
+                              className="btn-line flex-1 hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
+                            >
+                              <Laptop className="w-3 h-3" /> {t('audio.useBrowserMic')}
+                            </button>
+                            <button
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={uploadState.busy}
+                              className="btn-line flex-1 disabled:opacity-50"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       {uploadState.busy && (
@@ -1661,33 +1749,93 @@ function Dashboard() {
           </div>
 
           {/* AI screening (layer 1) + physician review (layer 2) */}
-          <div className="card p-5 will-fade-up animate-delay-400">
-            <SectionHead index="04" title={t('ai.title')}>
-              <span className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
-                {t('audio.' + activeAudioTab)}
-              </span>
-            </SectionHead>
+          <div className="card overflow-hidden will-fade-up animate-delay-400">
+            {/* Collapsible header with summary */}
+            <div
+              className={`p-5 ${!aiPanelCollapsed ? 'border-b border-hairline dark:border-coal-700' : ''}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <SectionHead index="04" title={t('ai.title')}>
+                  <span className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
+                    {t('audio.' + activeAudioTab)}
+                  </span>
+                </SectionHead>
+                <button
+                  onClick={() => setAiPanelCollapsed(v => !v)}
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                  title={aiPanelCollapsed ? 'Show full AI panel' : 'Collapse AI panel'}
+                >
+                  {aiPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  {aiPanelCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+                </button>
+              </div>
 
-            <div className="mt-4">
-              <AIAnalysisPanel
-                analysis={currentAnalysis}
-                type={activeAudioTab}
-                canReview={canReview}
-                running={analysisRunning}
-                progress={playProgress}
-                isDark={isDark}
-                onRun={handleRunAnalysis}
-                onReview={handleReview}
-                reviewSubmitting={reviewSubmitting}
-              />
+              {/* Collapsed summary row — shows verdict, triage, confidence at a glance */}
+              {aiPanelCollapsed && currentAnalysis && currentAnalysis.status !== 'error' && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 animate-fade-in">
+                  {(() => {
+                    const rev = currentAnalysis.review || { status: 'pending' };
+                    const lbl = rev.finalLabel || currentAnalysis.label;
+                    const tri = rev.finalTriage || currentAnalysis.triage?.level || 'green';
+                    const conf = Math.round((currentAnalysis.confidence || 0) * 100);
+                    const triColors = {
+                      red: 'text-risk-high dark:text-risk-highd bg-risk-high/[0.06] border-risk-high/30',
+                      yellow: 'text-risk-mod dark:text-risk-modd bg-risk-mod/[0.06] border-risk-mod/30',
+                      green: 'text-risk-low dark:text-risk-lowd bg-risk-low/[0.06] border-risk-low/30',
+                    };
+                    const revColors = {
+                      pending: 'text-muted dark:text-chalk-muted',
+                      confirmed: 'text-med-600 dark:text-med-300',
+                      modified: 'text-med-600 dark:text-med-300',
+                      rejected: 'text-risk-high dark:text-risk-highd',
+                    };
+                    return (
+                      <>
+                        <span className="text-sm font-semibold text-ink dark:text-chalk">
+                          {lbl ? lbl.replace(/_/g, ' ') : '—'}
+                        </span>
+                        <span className={`font-mono text-[11px] px-2 py-0.5 rounded border ${triColors[tri] || triColors.green}`}>
+                          {t('triage.' + tri)}
+                        </span>
+                        <span className="font-mono text-[11px] text-muted dark:text-chalk-muted">
+                          {t('ai.confidence')} {conf}%
+                        </span>
+                        <span className={`font-mono text-[11px] ${revColors[rev.status] || revColors.pending}`}>
+                          {t('ai.status' + rev.status.charAt(0).toUpperCase() + rev.status.slice(1))}
+                        </span>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+              {aiPanelCollapsed && !currentAnalysis && (
+                <p className="note mt-2 animate-fade-in">{t('ai.noResult')}</p>
+              )}
             </div>
 
-            {/* Print / export */}
-            <div className="flex flex-col sm:flex-row gap-2 mt-5 pt-5 border-t border-hairline dark:border-coal-700 print-hidden">
-              <button onClick={() => window.print()} className="btn-line flex-1">
-                <Printer className="w-3.5 h-3.5" /> {t('actions.print')}
-              </button>
-            </div>
+            {/* Full panel — hidden when collapsed */}
+            {!aiPanelCollapsed && (
+              <div className="p-5">
+                <AIAnalysisPanel
+                  analysis={currentAnalysis}
+                  type={activeAudioTab}
+                  canReview={canReview}
+                  running={analysisRunning}
+                  progress={playProgress}
+                  isDark={isDark}
+                  onRun={handleRunAnalysis}
+                  onReview={handleReview}
+                  reviewSubmitting={reviewSubmitting}
+                />
+
+                {/* Print / export */}
+                <div className="flex flex-col sm:flex-row gap-2 mt-5 pt-5 border-t border-hairline dark:border-coal-700 print-hidden">
+                  <button onClick={() => window.print()} className="btn-line flex-1">
+                    <Printer className="w-3.5 h-3.5" /> {t('actions.print')}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Legal position — this is a screening aid, not a diagnosis */}
