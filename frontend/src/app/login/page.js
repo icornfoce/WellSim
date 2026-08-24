@@ -10,27 +10,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Eye, EyeOff } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import { verifySession } from '../../services/api';
 import LangToggle from '../../components/LangToggle';
+import PulseMark from '../../components/ui/PulseMark';
 import { useLang } from '../../i18n/LanguageContext';
 import { API_URL } from '../../services/api';
-
-function PulseMark({ className = 'w-4 h-4' }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <path
-        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -146,15 +133,19 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {error && (
-              <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
+              <div role="alert" className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
                 <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
               </div>
             )}
 
             <div>
-              <label className="microlabel block mb-1.5">{t('login.email')}</label>
+              <label htmlFor="login-email" className="microlabel block mb-1.5">{t('login.email')}</label>
               <input
+                id="login-email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@wellsim.com"
@@ -164,10 +155,13 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="microlabel block mb-1.5">{t('login.password')}</label>
+              <label htmlFor="login-password" className="microlabel block mb-1.5">{t('login.password')}</label>
               <div className="relative">
                 <input
+                  id="login-password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -177,8 +171,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:text-chalk-muted dark:hover:text-chalk transition-colors"
+                  aria-label={showPassword ? t('a11y.hidePassword') : t('a11y.showPassword')}
+                  className="tap-target absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:text-chalk-muted dark:hover:text-chalk transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -215,9 +209,9 @@ export default function LoginPage() {
             </div>
             <p className="text-xs text-muted dark:text-chalk-muted mt-4 text-center">
               {t('login.noAccount')}{' '}
-              <a href="/register" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
+              <Link href="/register" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
                 {t('login.create')}
-              </a>
+              </Link>
             </p>
           </div>
         </div>

@@ -60,8 +60,11 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['IBM Plex Sans', 'IBM Plex Sans Thai', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+        // next/font injects the self-hosted families behind these variables
+        // (see app/layout.js). The literal names stay on as the fallback for
+        // anything rendered outside the font provider.
+        sans: ['var(--font-plex-sans)', 'var(--font-plex-thai)', 'IBM Plex Sans', 'IBM Plex Sans Thai', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['var(--font-plex-mono)', 'IBM Plex Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
         micro: ['10px', { letterSpacing: '0.14em', lineHeight: '1.2' }],

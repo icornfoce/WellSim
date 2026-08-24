@@ -10,10 +10,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, RefreshCw, Pencil, Check, Upload, Printer, Mic, Play, Pause, Trash2, Laptop, CheckCircle, Clock, AlertTriangle, Info } from 'lucide-react';
-import ThemeToggle from '../../components/ThemeToggle';
-import LangToggle from '../../components/LangToggle';
+import { RefreshCw, Pencil, Check, Upload, Mic, Trash2, CheckCircle, Clock, AlertTriangle, Info } from 'lucide-react';
+import TopBar from '../../components/TopBar';
+import LoadingScreen from '../../components/ui/LoadingScreen';
+import SectionHead from '../../components/ui/SectionHead';
+import AudioPlayer from '../../components/AudioPlayer';
+import AudioTypeTabs from '../../components/AudioTypeTabs';
+import VitalsGrid, { summariseVitals } from '../../components/vitals/VitalsGrid';
+import { useAudioPlayback } from '../../hooks/useAudioPlayback';
+import { AUDIO_TYPES, resolveAudioUrl } from '../../lib/audioTypes';
 import { useLang } from '../../i18n/LanguageContext';
+import { useToast } from '../../components/ui/Toast';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { dataDictionaryTH } from '../../i18n/translations';
 import { clinicalLabel } from '../../i18n/clinicalLabels';
 import {
@@ -26,62 +34,12 @@ import {
 } from '../../services/api';
 import { encodeWavFromBlob, formatDuration, ACCEPTED_AUDIO } from '../../lib/audioEncoder';
 
-function PulseMark({ className = 'w-4 h-4' }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <path
-        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SectionHead({ index, title, children }) {
-  return (
-    <div className="flex items-center gap-3 min-w-0">
-      <span className="font-mono text-[10px] text-med-600 dark:text-med-300 shrink-0">{index}</span>
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk whitespace-nowrap">
-        {title}
-      </h2>
-      <span className="flex-1 h-px bg-hairline dark:bg-coal-700 min-w-[12px]" />
-      {children}
-    </div>
-  );
-}
-
-function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
-  const clamp = (val, a, b) => Math.min(Math.max(Number(val) || 0, a), b);
-  const pct = ((clamp(value, min, max) - min) / (max - min)) * 100;
-  const okStart = ((okMin - min) / (max - min)) * 100;
-  const okWidth = ((okMax - okMin) / (max - min)) * 100;
-  const tickCls =
-    tone === 'bad'
-      ? 'bg-risk-high dark:bg-risk-highd'
-      : tone === 'warn'
-        ? 'bg-risk-mod dark:bg-risk-modd'
-        : 'bg-med-600 dark:bg-med-300';
-  return (
-    <div className="relative h-[3px] mt-3 bg-hairline dark:bg-coal-700">
-      <div
-        className="absolute inset-y-0 bg-ink/[0.09] dark:bg-white/[0.09]"
-        style={{ left: `${okStart}%`, width: `${okWidth}%` }}
-      />
-      <div
-        className={`absolute -top-[4px] w-[2px] h-[11px] transition-all duration-700 ${tickCls}`}
-        style={{ left: `calc(${pct}% - 1px)` }}
-      />
-    </div>
-  );
-}
-
 export default function PortalPage() {
   const router = useRouter();
   const { t, lang } = useLang();
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const locale = lang === 'th' ? 'th-TH' : 'en-GB';
   const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
   const [record, setRecord] = useState(null);
@@ -142,15 +100,21 @@ export default function PortalPage() {
 
   // Patient audio recording & playback states
   const [activeAudioTab, setActiveAudioTab] = useState('lung');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playProgress, setPlayProgress] = useState(0);
   const [isBrowserRecording, setIsBrowserRecording] = useState(false);
   const [browserRecordTime, setBrowserRecordTime] = useState(0);
   const [uploadState, setUploadState] = useState({ busy: false, message: '', error: '' });
   const [deleting, setDeleting] = useState(false);
-  const [playbackError, setPlaybackError] = useState('');
 
-  const audioRef = React.useRef(null);
+  /**
+   * Playback of the selected recording — the same hook the clinician
+   * dashboard uses. The portal used to carry its own copy of this
+   * logic, which meant it also carried the same defect: pressing play
+   * after a pause rebuilt the Audio element and restarted the
+   * recording from zero.
+   */
+  const currentAudioUrl = resolveAudioUrl(API_URL, record?.audioLogs?.[activeAudioTab]);
+  const player = useAudioPlayback({ url: currentAudioUrl, t });
+
   const mediaRecorderRef = React.useRef(null);
   const audioChunksRef = React.useRef([]);
   const fileInputRef = React.useRef(null);
@@ -173,73 +137,14 @@ export default function PortalPage() {
     return () => clearInterval(interval);
   }, [isBrowserRecording]);
 
-  // Leaving the portal must stop the audio and release the microphone.
+  // Leaving the portal must release the microphone. Playback is
+  // released by useAudioPlayback.
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== 'inactive') recorder.stop();
     };
   }, []);
-
-  const handleTogglePlay = () => {
-    const audioLog = record?.audioLogs?.[activeAudioTab];
-    if (!audioLog?.available) return;
-
-    if (isPlaying) {
-      audioRef.current?.pause();
-      setIsPlaying(false);
-      return;
-    }
-
-    // Without a stored file there is nothing to play. The old code set
-    // isPlaying anyway, so the button flipped to Pause and stayed there
-    // in silence with no way back.
-    if (!audioLog.url) {
-      setPlaybackError(t('audio.playbackMissing'));
-      return;
-    }
-
-    setPlaybackError('');
-    setPlayProgress(0);
-
-    const fullUrl = audioLog.url.startsWith('http')
-      ? audioLog.url
-      : `${API_URL}${audioLog.url}`;
-
-    audioRef.current?.pause();
-
-    const audio = new Audio(fullUrl);
-    audio.crossOrigin = 'anonymous';
-    audioRef.current = audio;
-
-    audio.addEventListener('timeupdate', () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
-      }
-    });
-
-    audio.addEventListener('ended', () => {
-      setIsPlaying(false);
-      setPlayProgress(0);
-    });
-
-    audio.addEventListener('error', () => {
-      audioRef.current = null;
-      setIsPlaying(false);
-      setPlayProgress(0);
-      setPlaybackError(t('audio.playbackFailed'));
-    });
-
-    audio.play()
-      .then(() => setIsPlaying(true))
-      .catch((err) => {
-        console.error('Audio playback failed:', err);
-        setIsPlaying(false);
-        setPlaybackError(t('audio.playbackFailed'));
-      });
-  };
 
   const startBrowserRecording = async () => {
     try {
@@ -346,18 +251,19 @@ export default function PortalPage() {
 
   const handleDeleteAudio = async () => {
     if (!record) return;
-    if (!window.confirm(t('audio.confirmDelete'))) return;
+    const ok = await confirm({
+      title: t('confirm.audioTitle'),
+      body: t('audio.confirmDelete'),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     setDeleting(true);
     try {
       await apiDeleteAudio(record.id, activeAudioTab);
-      setIsPlaying(false);
-      setPlayProgress(0);
-      setPlaybackError('');
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      player.stop();
+      toast(t('toast.audioDeleted'), { tone: 'success' });
       await load();
     } catch (err) {
       setUploadState({ busy: false, message: '', error: err.message || t('audio.saveFailed') });
@@ -413,7 +319,6 @@ export default function PortalPage() {
     router.replace('/login');
   };
 
-  const has = (x) => x !== null && x !== undefined;
   const v = record?.vitals || {};
 
   const calculateBMI = (w, h) => {
@@ -440,48 +345,20 @@ export default function PortalPage() {
     return ['male', 'female', 'other', 'unspecified'].includes(key) ? t('gender.' + key) : (g ?? '—');
   };
 
-  // Vitals rows: value formatter + abnormal tone
-  const vitalRows = [
-    {
-      label: t('vitals.spo2'), value: has(v.spo2) ? v.spo2 : null, unit: '%', ref: '95–100',
-      bad: has(v.spo2) && v.spo2 < 95, tone: 'bad', mark: '▼', bar: has(v.spo2) ? { value: v.spo2, min: 85, max: 100, okMin: 95, okMax: 100, tone: v.spo2 < 95 ? 'bad' : 'ok' } : null
-    },
-    {
-      label: t('vitals.hr'), value: has(v.heartRate) ? v.heartRate : null, unit: 'bpm', ref: '60–100',
-      bad: has(v.heartRate) && v.heartRate > 100, tone: 'bad', mark: '▲', bar: has(v.heartRate) ? { value: v.heartRate, min: 40, max: 140, okMin: 60, okMax: 100, tone: v.heartRate > 100 ? 'bad' : 'ok' } : null
-    },
-    {
-      label: t('vitals.bp'), value: has(v.systolicBP) ? `${v.systolicBP}/${has(v.diastolicBP) ? v.diastolicBP : '—'}` : null, unit: 'mmHg', ref: '<120/80',
-      bad: has(v.systolicBP) && v.systolicBP > 140, tone: 'warn', mark: '▲', bar: has(v.systolicBP) ? { value: v.systolicBP, min: 80, max: 180, okMin: 90, okMax: 120, tone: v.systolicBP > 140 ? 'warn' : 'ok' } : null
-    },
-    {
-      label: t('vitals.wbc'), value: has(v.wbc) ? v.wbc.toLocaleString() : null, unit: '/mcL', ref: '4,500–11,000',
-      bad: has(v.wbc) && v.wbc > 11000, tone: 'warn', mark: '▲', bar: has(v.wbc) ? { value: v.wbc, min: 2000, max: 20000, okMin: 4500, okMax: 11000, tone: v.wbc > 11000 ? 'warn' : 'ok' } : null
-    },
-    {
-      label: t('vitals.hgb'), value: has(v.hemoglobin) ? v.hemoglobin : null, unit: 'g/dL', ref: '12.0–17.5',
-      bad: has(v.hemoglobin) && v.hemoglobin < 12, tone: 'warn', mark: '▼', bar: has(v.hemoglobin) ? { value: v.hemoglobin, min: 8, max: 20, okMin: 12, okMax: 17.5, tone: v.hemoglobin < 12 ? 'warn' : 'ok' } : null
-    },
-  ];
+  // The reference bands and the "which way is abnormal" rules used to
+  // be written out again here, separately from the dashboard's copy.
+  // Both screens now read them from components/vitals/VitalsGrid, so a
+  // threshold cannot be changed for the doctor and not for the patient.
+  const vitalsSummary = summariseVitals(v);
 
-  const audioRows = ['lung', 'heart', 'cough'].map((key) => {
+  const audioRows = AUDIO_TYPES.map((key) => {
     const log = record?.audioLogs?.[key];
     return { key, label: t('audio.' + key), available: !!log?.available, duration: log?.duration };
   });
 
   if (!user || loading) {
     return (
-      <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center transition-colors duration-300">
-        <div className="text-center animate-fade-in">
-          <div className="w-8 h-8 mx-auto rounded bg-ink dark:bg-chalk flex items-center justify-center">
-            <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
-          </div>
-          <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
-            <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
-          </div>
-          <p className="microlabel mt-4">{t('portal.loading')}</p>
-        </div>
-      </div>
+      <LoadingScreen label={t('portal.loading')} />
     );
   }
 
@@ -489,46 +366,14 @@ export default function PortalPage() {
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
 
       {/* Top bar */}
-      <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
-        <div className="max-w-3xl mx-auto flex items-center justify-between h-14 gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
-              <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
-            </div>
-            <div className="flex items-baseline gap-2.5">
-              <span className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</span>
-              <span className="microlabel hidden sm:inline">{t('portal.kicker')}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <LangToggle />
-            <ThemeToggle />
-            <button
-              onClick={() => window.print()}
-              title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
-              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
-                         text-muted hover:text-ink hover:border-ink/50
-                         dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
-                         transition-colors duration-200"
-            >
-              <Printer className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
-            <p className="text-xs font-semibold text-ink dark:text-chalk hidden sm:block">{user?.name}</p>
-            <button
-              onClick={onLogout}
-              title={t('header.signOut')}
-              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
-                         text-muted hover:text-risk-high hover:border-risk-high/50
-                         dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
-                         transition-colors duration-200"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <TopBar
+        kicker={t('portal.kicker')}
+        width="max-w-3xl"
+        user={user}
+        onPrint={() => window.print()}
+        onLogout={onLogout}
+        t={t}
+      />
 
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
 
@@ -588,14 +433,17 @@ export default function PortalPage() {
                   </div>
 
                   {demoErr && (
-                    <p className="text-xs text-risk-high dark:text-risk-highd bg-risk-high/10 p-2 rounded">{demoErr}</p>
+                    <p role="alert" className="text-xs text-risk-high dark:text-risk-highd bg-risk-high/10 p-2 rounded">{demoErr}</p>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="microlabel block mb-1">{t('modal.fullName')}</label>
+                      <label htmlFor="portal-name" className="microlabel block mb-1">{t('modal.fullName')}</label>
                       <input
+                        id="portal-name"
+                        name="name"
                         type="text"
+                        autoComplete="name"
                         value={demoForm.name}
                         onChange={(e) => setDemoForm({ ...demoForm, name: e.target.value })}
                         className="field w-full text-xs"
@@ -603,8 +451,10 @@ export default function PortalPage() {
                       />
                     </div>
                     <div>
-                      <label className="microlabel block mb-1">{t('modal.gender')}</label>
+                      <label htmlFor="portal-gender" className="microlabel block mb-1">{t('modal.gender')}</label>
                       <select
+                        id="portal-gender"
+                        name="gender"
                         value={demoForm.gender}
                         onChange={(e) => setDemoForm({ ...demoForm, gender: e.target.value })}
                         className="field w-full text-xs"
@@ -616,9 +466,12 @@ export default function PortalPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="microlabel block mb-1">{t('modal.age')}</label>
+                      <label htmlFor="portal-age" className="microlabel block mb-1">{t('modal.age')}</label>
                       <input
+                        id="portal-age"
+                        name="age"
                         type="number"
+                        inputMode="numeric"
                         min="0"
                         max="120"
                         onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
@@ -630,9 +483,12 @@ export default function PortalPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="microlabel block mb-1">{t('modal.weightKg')}</label>
+                        <label htmlFor="portal-weight" className="microlabel block mb-1">{t('modal.weightKg')}</label>
                         <input
+                          id="portal-weight"
+                          name="weight"
                           type="number"
+                          inputMode="decimal"
                           step="0.1"
                           min="0"
                           onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
@@ -643,9 +499,12 @@ export default function PortalPage() {
                         />
                       </div>
                       <div>
-                        <label className="microlabel block mb-1">{t('modal.heightCm')}</label>
+                        <label htmlFor="portal-height" className="microlabel block mb-1">{t('modal.heightCm')}</label>
                         <input
+                          id="portal-height"
+                          name="height"
                           type="number"
+                          inputMode="decimal"
                           step="0.1"
                           min="0"
                           onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
@@ -706,60 +565,29 @@ export default function PortalPage() {
             <div className="card p-5 will-fade-up animate-delay-100">
               <SectionHead index="01" title={t('vitals.title')} />
 
-              {/* Abnormal count summary */}
-              {(() => {
-                const abnormalCount = vitalRows.filter(r => r.bad && r.value != null).length;
-                const measuredCount = vitalRows.filter(r => r.value != null).length;
-                if (measuredCount === 0) {
-                  return <p className="note mt-3">{t('portal.vitalsNone')}</p>;
-                }
-                return (
-                  <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-                    abnormalCount > 0
-                      ? 'bg-risk-mod/[0.08] dark:bg-risk-modd/[0.10] text-risk-mod dark:text-risk-modd border border-risk-mod/20 dark:border-risk-modd/25'
-                      : 'bg-risk-low/[0.07] dark:bg-risk-lowd/[0.09] text-risk-low dark:text-risk-lowd border border-risk-low/20 dark:border-risk-lowd/25'
-                  }`}>
-                    {abnormalCount > 0 ? (
-                      <><AlertTriangle className="w-3.5 h-3.5" /> {t('portal.vitalsAbnormal', { n: abnormalCount })}</>
-                    ) : (
-                      <><CheckCircle className="w-3.5 h-3.5" /> {t('portal.vitalsAllNormal')}</>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* Abnormal count summary, counted from the same spec
+                  table the cells below are drawn from. */}
+              {vitalsSummary.measured === 0 ? (
+                <p className="note mt-3">{t('portal.vitalsNone')}</p>
+              ) : (
+                <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                  vitalsSummary.abnormal > 0
+                    ? 'bg-risk-mod/[0.08] dark:bg-risk-modd/[0.10] text-risk-mod dark:text-risk-modd border border-risk-mod/20 dark:border-risk-modd/25'
+                    : 'bg-risk-low/[0.07] dark:bg-risk-lowd/[0.09] text-risk-low dark:text-risk-lowd border border-risk-low/20 dark:border-risk-lowd/25'
+                }`}>
+                  {vitalsSummary.abnormal > 0 ? (
+                    <><AlertTriangle className="w-3.5 h-3.5" /> {t('portal.vitalsAbnormal', { n: vitalsSummary.abnormal })}</>
+                  ) : (
+                    <><CheckCircle className="w-3.5 h-3.5" /> {t('portal.vitalsAllNormal')}</>
+                  )}
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-3">
-                {vitalRows.map((row) => (
-                  <div key={row.label} className={`bg-surface dark:bg-coal-900 p-4 ${row.bad ? 'relative' : ''}`}>
-                    {row.bad && <span className="absolute top-0 left-0 right-0 h-[2px] bg-risk-mod dark:bg-risk-modd" />}
-                    <div className="flex justify-between items-baseline">
-                      <p className="microlabel">{row.label}</p>
-                      {row.bad && (
-                        <span className={`font-mono text-[11px] font-medium ${
-                          row.tone === 'bad' ? 'text-risk-high dark:text-risk-highd' : 'text-risk-mod dark:text-risk-modd'
-                        }`}>
-                          {row.mark} {row.mark === '▲' ? t('tag.high') : t('tag.low')}
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                      row.bad
-                        ? row.tone === 'bad' ? 'text-risk-high dark:text-risk-highd' : 'text-risk-mod dark:text-risk-modd'
-                        : 'text-ink dark:text-chalk'
-                    }`}>
-                      {row.value ?? '—'}
-                      {row.value != null && (
-                        <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{row.unit}</span>
-                      )}
-                    </p>
-                    {row.bar && <TickBar {...row.bar} />}
-                    <p className="datum mt-2.5">{t('vitals.ref')} {row.ref}</p>
-                  </div>
-                ))}
+              <VitalsGrid vitals={v} t={t} idPrefix="portal-vitals">
                 <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
                   <p className="note-sm">{t('portal.vitalsNote')}</p>
                 </div>
-              </div>
+              </VitalsGrid>
             </div>
 
             {/* Overall status — plain language, replaces the bare risk % dial */}
@@ -874,25 +702,13 @@ export default function PortalPage() {
             {/* Recordings — 3-type audio recording & playback */}
             <div className="card p-5 will-fade-up animate-delay-300">
               <SectionHead index="03" title={t('audio.title')}>
-                <div className="flex gap-3">
-                  {['lung', 'heart', 'cough'].map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => {
-                        setActiveAudioTab(tab);
-                        setIsPlaying(false);
-                        setPlayProgress(0);
-                      }}
-                      className={`text-[13px] capitalize text-center min-w-[2.75rem] px-1 py-2.5 border-b-2 transition-colors duration-200 ${
-                        activeAudioTab === tab
-                          ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
-                          : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
-                      }`}
-                    >
-                      {t('audio.' + tab)}
-                    </button>
-                  ))}
-                </div>
+                <AudioTypeTabs
+                  active={activeAudioTab}
+                  onChange={setActiveAudioTab}
+                  audioLogs={record?.audioLogs}
+                  t={t}
+                  gap="gap-3"
+                />
               </SectionHead>
 
               <div className="mt-4">
@@ -915,32 +731,15 @@ export default function PortalPage() {
                       </span>
                     </div>
 
-                    {/* Audio Player Box */}
-                    <div className="mt-3 bg-ink dark:bg-coal-850 dark:border dark:border-coal-700 rounded-md p-4 flex items-center gap-4">
-                      <button
-                        onClick={handleTogglePlay}
-                        className="w-10 h-10 rounded bg-med-500 hover:bg-med-400 text-white flex items-center justify-center flex-shrink-0 transition-colors duration-200 active:translate-y-px"
-                      >
-                        {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
-                      </button>
-
-                      <div className="relative flex-1 h-3 bg-white/20 dark:bg-coal-700 rounded overflow-hidden">
-                        <div
-                          className="absolute top-0 bottom-0 left-0 bg-med-400 transition-all duration-300"
-                          style={{ width: `${playProgress}%` }}
-                        />
-                      </div>
-
-                      <span className="font-mono text-[11px] text-chalk-muted tabular-nums w-9 text-right shrink-0">
-                        {playProgress}%
-                      </span>
-                    </div>
-
-                    {playbackError && (
-                      <p className="note mt-2 !text-risk-high dark:!text-risk-highd">
-                        {playbackError}
-                      </p>
-                    )}
+                    {/* The same player the clinician sees, including
+                        the seekable waveform once a screening has run. */}
+                    <AudioPlayer
+                      player={player}
+                      waveform={analyses?.[activeAudioTab]?.waveform}
+                      segments={analyses?.[activeAudioTab]?.segments}
+                      durationSec={analyses?.[activeAudioTab]?.durationSec || 0}
+                      t={t}
+                    />
 
                     {/* Controls for current recording */}
                     <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
@@ -1033,12 +832,7 @@ export default function PortalPage() {
                         key={key}
                         type="button"
                         aria-pressed={isTabActive}
-                        onClick={() => {
-                          setActiveAudioTab(key);
-                          setIsPlaying(false);
-                          setPlayProgress(0);
-                          setPlaybackError('');
-                        }}
+                        onClick={() => setActiveAudioTab(key)}
                         className={`w-full text-left flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-150 ${
                           isTabActive ? 'bg-ink/[0.04] dark:bg-coal-800' : 'bg-surface dark:bg-coal-900 hover:bg-ink/[0.02] dark:hover:bg-coal-850'
                         }`}
