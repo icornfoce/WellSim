@@ -15,13 +15,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Play,
-  Pause,
   Printer,
   RefreshCw,
   Search,
   Check,
-  LogOut,
   Plus,
   Pencil,
   Trash2,
@@ -33,16 +30,25 @@ import {
   Laptop,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
 import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
 import PatientFormModal from '../components/PatientFormModal';
-import ThemeToggle from '../components/ThemeToggle';
-import LangToggle from '../components/LangToggle';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
+import TopBar, { TelemetryStrip } from '../components/TopBar';
+import LoadingScreen from '../components/ui/LoadingScreen';
+import SectionHead from '../components/ui/SectionHead';
+import AudioPlayer from '../components/AudioPlayer';
+import AudioTypeTabs from '../components/AudioTypeTabs';
+import VitalsGrid, { summariseVitals } from '../components/vitals/VitalsGrid';
+import { useAudioPlayback } from '../hooks/useAudioPlayback';
+import { AUDIO_TYPES, resolveAudioUrl } from '../lib/audioTypes';
 import { useLang } from '../i18n/LanguageContext';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { dataDictionaryTH } from '../i18n/translations';
 import {
   encodeWavFromBlob,
@@ -53,7 +59,7 @@ import {
 import {
   API_URL,
   fetchPatients,
-  updatePatientVitals as apiUpdateVitals,
+  updatePatientVitals as apiUpdatePatientVitals,
   createPatient as apiCreatePatient,
   updatePatient as apiUpdatePatient,
   deletePatient as apiDeletePatient,
@@ -75,11 +81,9 @@ const TRIAGE_RANK = { high: 0, moderate: 1, low: 2, pending: 3 };
  * to a synthesiser and the screening engine had nothing to read. A
  * screening tool must not claim to hold data it does not have.
  */
-const NO_AUDIO_LOGS = {
-  lung: { available: false, status: 'Not recorded', duration: '0:00' },
-  heart: { available: false, status: 'Not recorded', duration: '0:00' },
-  cough: { available: false, status: 'Not recorded', duration: '0:00' },
-};
+const NO_AUDIO_LOGS = Object.fromEntries(
+  AUDIO_TYPES.map((type) => [type, { available: false, status: 'Not recorded', duration: '0:00' }])
+);
 
 export default function Page() {
   return (
@@ -89,66 +93,16 @@ export default function Page() {
   );
 }
 
-/* ─── The WellSim mark: a hand-drawn pulse in a solid block ────────── */
-function PulseMark({ className = 'w-4 h-4' }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <path
-        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/* ─── Numbered section header with a trailing hairline rule ────────── */
-function SectionHead({ index, title, children }) {
-  return (
-    <div className="flex items-center gap-3 min-w-0">
-      <span className="font-mono text-[10px] text-med-600 dark:text-med-300 shrink-0">{index}</span>
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink dark:text-chalk whitespace-nowrap">
-        {title}
-      </h2>
-      <span className="flex-1 h-px bg-hairline dark:bg-coal-700 min-w-[12px]" />
-      {children}
-    </div>
-  );
-}
-
-/* ─── Instrument tick: where a reading sits against its ref band ───── */
-function TickBar({ value, min, max, okMin, okMax, tone = 'ok' }) {
-  const clamp = (v, a, b) => Math.min(Math.max(Number(v) || 0, a), b);
-  const pct = ((clamp(value, min, max) - min) / (max - min)) * 100;
-  const okStart = ((okMin - min) / (max - min)) * 100;
-  const okWidth = ((okMax - okMin) / (max - min)) * 100;
-  const tickCls =
-    tone === 'bad'
-      ? 'bg-risk-high dark:bg-risk-highd'
-      : tone === 'warn'
-        ? 'bg-risk-mod dark:bg-risk-modd'
-        : 'bg-med-600 dark:bg-med-300';
-  return (
-    <div className="relative h-[3px] mt-3 bg-hairline dark:bg-coal-700">
-      <div
-        className="absolute inset-y-0 bg-ink/[0.09] dark:bg-white/[0.09]"
-        style={{ left: `${okStart}%`, width: `${okWidth}%` }}
-      />
-      <div
-        className={`absolute -top-[4px] w-[2px] h-[11px] transition-all duration-700 ${tickCls}`}
-        style={{ left: `calc(${pct}% - 1px)` }}
-      />
-    </div>
-  );
-}
-
 function Dashboard() {
   const router = useRouter();
   const { deviceStatus } = useDeviceData();
   const { t, lang } = useLang();
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  // Dates and clocks follow the language toggle. They used to be pinned
+  // to 'en-US', so the Thai UI still printed "Mon, Aug 24" and a 12-hour
+  // clock next to Thai labels.
+  const locale = lang === 'th' ? 'th-TH' : 'en-GB';
   // Translate known demo/backend data strings when viewing in Thai
   const td = (text) => (lang === 'th' && dataDictionaryTH[text]) || text;
   const [user, setUser] = useState(null);
@@ -156,8 +110,6 @@ function Dashboard() {
   const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [activeAudioTab, setActiveAudioTab] = useState('lung'); // lung, heart, cough
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playProgress, setPlayProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Input editing state for vitals/lab data
@@ -177,6 +129,28 @@ function Dashboard() {
 
   // Queue search
   const [searchQuery, setSearchQuery] = useState('');
+
+  /**
+   * Which of the two panes a phone is looking at.
+   *
+   * Below `lg` the queue and the record used to stack, with the queue
+   * pinned to a full viewport height and scrolling inside itself. That
+   * put the patient's record a screen and a half below the fold behind
+   * a scroll trap, and tapping a name in the queue produced no visible
+   * result — the record it opened was off-screen. One pane at a time,
+   * with an explicit way back, is what that layout actually wanted.
+   * From `lg` up both panes are shown and this state is ignored.
+   */
+  const [mobileView, setMobileView] = useState('queue');
+
+  /** Select a patient, and on a phone move to their record. */
+  const openPatient = useCallback((id) => {
+    setSelectedPatientId(id);
+    setMobileView('record');
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
 
   // AI panel — collapsed summary mode for faster scanning
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
@@ -248,6 +222,9 @@ function Dashboard() {
     try {
       const res = await apiRunAnalysis(patient.id, activeAudioTab);
       setAnalyses((prev) => ({ ...prev, [activeAudioTab]: res.analysis }));
+      if (res.analysis?.status !== 'error') {
+        toast(t('toast.analysisDone'), { tone: 'success' });
+      }
       if (res.patient) {
         setPatients((prev) =>
           prev.map((p) => (p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p))
@@ -275,6 +252,7 @@ function Dashboard() {
         ...prev,
         [activeAudioTab]: { ...prev[activeAudioTab], review: res.review },
       }));
+      toast(t('toast.reviewSaved'), { tone: 'success' });
       if (res.patient) {
         setPatients((prev) =>
           prev.map((p) => (p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p))
@@ -314,75 +292,17 @@ function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const audioRef = useRef(null);
-  const [playbackError, setPlaybackError] = useState('');
-
   /**
-   * Play the stored recording — and only the stored recording.
+   * Playback of the selected recording.
    *
-   * An earlier version fell back to a Web Audio synthesiser when the
-   * file failed to load: it played a generated "heartbeat" or
-   * "breathing" tone and ran the progress bar as though the patient's
-   * own audio were playing. A clinician listening to that would have
-   * been auscultating an oscillator. A screening tool must never
-   * substitute a plausible sound for a missing one, so a failed load
-   * now says so and stops.
+   * The element, pause/resume, seeking and the elapsed clock all live
+   * in useAudioPlayback, which the patient portal shares. Both screens
+   * used to keep their own copy, and both copies rebuilt the Audio
+   * element on every press of play — so pausing and resuming restarted
+   * the recording from zero.
    */
-  const handleTogglePlay = () => {
-    const audioLog = patient?.audioLogs?.[activeAudioTab];
-    if (!audioLog?.available) return;
-
-    if (isPlaying) {
-      audioRef.current?.pause();
-      setIsPlaying(false);
-      return;
-    }
-
-    if (!audioLog.url) {
-      setPlaybackError(t('audio.playbackMissing'));
-      return;
-    }
-
-    setPlaybackError('');
-    setPlayProgress(0);
-
-    const fullUrl = audioLog.url.startsWith('http')
-      ? audioLog.url
-      : `${API_URL}${audioLog.url}`;
-
-    audioRef.current?.pause();
-
-    const audio = new Audio(fullUrl);
-    audio.crossOrigin = 'anonymous'; // Required for cross-origin audio playback
-    audioRef.current = audio;
-
-    audio.addEventListener('timeupdate', () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setPlayProgress(Math.round((audio.currentTime / audio.duration) * 100));
-      }
-    });
-
-    audio.addEventListener('ended', () => {
-      setIsPlaying(false);
-      setPlayProgress(0);
-    });
-
-    audio.addEventListener('error', () => {
-      console.warn('Audio file failed to load:', fullUrl);
-      audioRef.current = null;
-      setIsPlaying(false);
-      setPlayProgress(0);
-      setPlaybackError(t('audio.playbackFailed'));
-    });
-
-    audio.play()
-      .then(() => setIsPlaying(true))
-      .catch((err) => {
-        console.error('Audio playback failed:', err);
-        setIsPlaying(false);
-        setPlaybackError(t('audio.playbackFailed'));
-      });
-  };
+  const currentAudioUrl = resolveAudioUrl(API_URL, patient?.audioLogs?.[activeAudioTab]);
+  const player = useAudioPlayback({ url: currentAudioUrl, t });
 
   const [isTriggeringESP32, setIsTriggeringESP32] = useState(false);
   // One status line shared by every capture route (device, mic, upload)
@@ -461,10 +381,15 @@ function Dashboard() {
     const signed = analyses?.[activeAudioTab]?.review;
     const wasSigned = signed && signed.status !== 'pending';
 
-    const confirmText = wasSigned
-      ? t('audio.confirmDeleteSigned', { doctor: signed.doctorName || '—' })
-      : t('audio.confirmDelete');
-    if (!window.confirm(confirmText)) return;
+    const ok = await confirm({
+      title: wasSigned ? t('confirm.audioSignedTitle') : t('confirm.audioTitle'),
+      body: wasSigned
+        ? t('audio.confirmDeleteSigned', { doctor: signed.doctorName || '—' })
+        : t('audio.confirmDelete'),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     setDeleting(true);
     try {
@@ -490,12 +415,7 @@ function Dashboard() {
           )
         );
       }
-      setIsPlaying(false);
-      setPlayProgress(0);
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      player.stop();
     } catch (err) {
       console.error('Delete failed:', err);
       setUploadState({ busy: false, message: '', error: err.message });
@@ -663,10 +583,10 @@ function Dashboard() {
     }
   };
 
-  // Clean up any playing audio, recording and device poll on unmount
+  // Clean up recording and the device poll on unmount. Playback is
+  // released by useAudioPlayback.
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
       stopEsp32Poll();
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
@@ -688,9 +608,6 @@ function Dashboard() {
    * nurse had typed into the vitals form.
    */
   useEffect(() => {
-    audioRef.current?.pause();
-    audioRef.current = null;
-
     stopEsp32Poll();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -701,10 +618,6 @@ function Dashboard() {
     setIsBrowserRecording(false);
     setIsTriggeringESP32(false);
     setCaptureMessage('');
-    setPlaybackError('');
-
-    setIsPlaying(false);
-    setPlayProgress(0);
     setIsEditing(false);
     setAiPanelCollapsed(false);
   }, [selectedPatientId, activeAudioTab, stopEsp32Poll]);
@@ -719,17 +632,7 @@ function Dashboard() {
   // Show loading screen while waiting for the API to fetch patients
   if (!patientsLoaded) {
     return (
-      <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center transition-colors duration-300">
-        <div className="text-center animate-fade-in">
-          <div className="w-8 h-8 mx-auto rounded bg-ink dark:bg-chalk flex items-center justify-center">
-            <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
-          </div>
-          <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
-            <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
-          </div>
-          <p className="microlabel mt-4">{t('common.loading')}</p>
-        </div>
-      </div>
+      <LoadingScreen label={t('common.loading')} />
     );
   }
 
@@ -786,7 +689,15 @@ function Dashboard() {
   const saveVitals = async () => {
     try {
       // Send updated vitals to backend — backend recalculates risk
-      const res = await apiUpdateVitals(patient.id, editedVitals);
+      // Only send fields that hold something. An emptied input used to
+      // arrive at the API as 0 and be stored as a real measurement.
+      const payload = {};
+      for (const [key, raw] of Object.entries(editedVitals)) {
+        if (raw === '' || raw === null || raw === undefined) continue;
+        const n = Number(raw);
+        if (Number.isFinite(n) && n >= 0) payload[key] = n;
+      }
+      const res = await apiUpdatePatientVitals(patient.id, payload);
       if (res.success && res.patient) {
         // Update local state with backend response
         setPatients(prev => prev.map(p => {
@@ -796,11 +707,15 @@ function Dashboard() {
           return p;
         }));
       }
+      toast(t('toast.vitalsSaved'), { tone: 'success' });
+      setIsEditing(false);
     } catch (err) {
       console.error('Failed to save vitals:', err.message);
-      alert('Failed to save vitals. Please try again.');
+      // Stay in edit mode on failure: dropping back to the read-only
+      // view after a failed save shows the old numbers and reads as if
+      // the save had worked.
+      toast(t('toast.vitalsFailed'), { tone: 'error' });
     }
-    setIsEditing(false);
   };
 
   // ─── Patient CRUD handlers ──────────────────────────────────────────
@@ -823,6 +738,7 @@ function Dashboard() {
           const newPatient = { ...res.patient, audioLogs: NO_AUDIO_LOGS };
           setPatients((prev) => [...prev, newPatient]);
           setSelectedPatientId(res.patient.id);
+          toast(t('toast.patientCreated', { name: res.patient.name }), { tone: 'success' });
         }
       } else {
         const res = await apiUpdatePatient(patient.id, payload);
@@ -832,12 +748,14 @@ function Dashboard() {
               p.id === res.patient.id ? { ...p, ...res.patient, audioLogs: p.audioLogs } : p
             )
           );
+          toast(t('toast.patientUpdated', { name: res.patient.name }), { tone: 'success' });
         }
       }
       setModalOpen(false);
     } catch (err) {
       console.error('Failed to save patient:', err.message);
-      alert(`Failed to save patient: ${err.message}`);
+      // The modal stays open so the typed record is not lost.
+      toast(t('toast.patientSaveFailed', { reason: err.message }), { tone: 'error' });
     } finally {
       setModalSubmitting(false);
     }
@@ -845,7 +763,15 @@ function Dashboard() {
 
   const handleDeletePatient = async () => {
     if (!patient) return;
-    if (!window.confirm(t('confirm.delete', { name: patient.name }))) return;
+    const deletedName = patient.name;
+    const ok = await confirm({
+      title: t('confirm.deleteTitle'),
+      body: t('confirm.deleteBody', { name: deletedName }),
+      detail: t('confirm.deleteDetail'),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     const deletedId = patient.id;
     try {
@@ -854,10 +780,11 @@ function Dashboard() {
         const remaining = patients.filter((p) => p.id !== deletedId);
         setPatients(remaining);
         setSelectedPatientId(remaining.length ? remaining[0].id : null);
+        toast(t('toast.patientDeleted', { name: deletedName }), { tone: 'success' });
       }
     } catch (err) {
       console.error('Failed to delete patient:', err.message);
-      alert(`Failed to delete patient: ${err.message}`);
+      toast(t('toast.patientDeleteFailed', { reason: err.message }), { tone: 'error' });
     }
   };
 
@@ -865,66 +792,23 @@ function Dashboard() {
   if (!patient) {
     return (
       <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
-        <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
-          <div className="max-w-7xl mx-auto flex items-center justify-between h-14 gap-4">
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
-                <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
-              </div>
-              <div className="flex items-baseline gap-2.5">
-                <span className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</span>
-                <span className="microlabel hidden sm:inline">Triage / v2</span>
-              </div>
-            </div>
-
-            <div className="hidden md:flex items-center gap-6 font-mono text-[11px] text-muted dark:text-chalk-muted">
-              <span className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-[1px] ${
-                  deviceStatus?.status === 'online'
-                    ? 'bg-med-500 dark:bg-med-300 animate-blink'
-                    : 'bg-risk-high dark:bg-risk-highd'
-                }`} />
-                {deviceStatus?.status === 'online'
-                  ? t('header.iotOnline')
-                  : deviceStatus?.last_seen_ago_ms > 0 && deviceStatus.last_seen_ago_ms < 3_600_000
-                    ? (() => {
-                        const mins = Math.floor(deviceStatus.last_seen_ago_ms / 60_000);
-                        return lang === 'th'
-                          ? `IOT · เห็นล่าสุด ${mins > 0 ? `${mins}น.` : '<1น.'} ที่แล้ว`
-                          : `IOT · last seen ${mins > 0 ? `${mins}m` : '<1m'} ago`;
-                      })()
-                  : t('header.iotOffline')
-                }
-              </span>
-              <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
-              <span className="tabular-nums text-ink dark:text-chalk">
-                {currentTime.toLocaleTimeString('en-US', { hour12: false })}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <LangToggle />
-              <ThemeToggle />
-              <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
-              <div className="text-right hidden sm:block leading-tight">
-                <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
-                <p className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
-                  {['nurse', 'doctor', 'patient'].includes(user?.role) ? t('role.' + user.role) : t('role.unknown')} · {user?.station || '—'}
-                </p>
-              </div>
-              <button
-                onClick={onLogout}
-                title={t('header.signOut')}
-                className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
-                           text-muted hover:text-risk-high hover:border-risk-high/50
-                           dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
-                           transition-colors duration-200"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </header>
+        <TopBar
+          kicker="Triage / v2"
+          telemetry={
+            <TelemetryStrip
+              deviceStatus={deviceStatus}
+              currentTime={currentTime}
+              locale={locale}
+              lang={lang}
+              t={t}
+            />
+          }
+          deviceStatus={deviceStatus}
+          user={user}
+          showRole
+          onLogout={onLogout}
+          t={t}
+        />
 
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center max-w-sm animate-fade-up">
@@ -954,7 +838,6 @@ function Dashboard() {
   const risk = getRisk(patient?.riskStatus);
   const bmiValue = calculateBMI(patient.weight, patient.height);
   const v = patient?.vitals || {};
-  const has = (x) => x !== null && x !== undefined;
 
   // The screening result for the recording currently selected
   const currentAnalysis = analyses?.[activeAudioTab] || null;
@@ -993,80 +876,24 @@ function Dashboard() {
           its own vitals-only rule could contradict them. */}
 
       {/* ─── 1. TOP BAR ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-surface/95 dark:bg-coal-900/95 backdrop-blur-sm border-b border-hairline dark:border-coal-700 px-4 sm:px-6 print-hidden">
-        <div className="max-w-7xl mx-auto flex items-center justify-between h-14 gap-4">
-
-          {/* Wordmark */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-7 h-7 rounded bg-ink dark:bg-chalk flex items-center justify-center">
-              <PulseMark className="w-4 h-4 text-white dark:text-coal-950" />
-            </div>
-            <div className="flex items-baseline gap-2.5">
-              <span className="text-[15px] font-semibold tracking-tight text-ink dark:text-chalk">WellSim</span>
-              <span className="microlabel hidden sm:inline">Triage / v2</span>
-            </div>
-          </div>
-
-          {/* Telemetry strip */}
-          <div className="hidden md:flex items-center gap-6 font-mono text-[11px] text-muted dark:text-chalk-muted">
-            <span className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-[1px] ${
-                deviceStatus?.status === 'online'
-                  ? 'bg-med-500 dark:bg-med-300 animate-blink'
-                  : 'bg-risk-high dark:bg-risk-highd'
-              }`} />
-              {deviceStatus?.status === 'online'
-                ? t('header.iotOnline')
-                : deviceStatus?.last_seen_ago_ms > 0 && deviceStatus.last_seen_ago_ms < 3_600_000
-                  ? (() => {
-                      const mins = Math.floor(deviceStatus.last_seen_ago_ms / 60_000);
-                      return lang === 'th'
-                        ? `IOT · เห็นล่าสุด ${mins > 0 ? `${mins}น.` : '<1น.'} ที่แล้ว`
-                        : `IOT · last seen ${mins > 0 ? `${mins}m` : '<1m'} ago`;
-                    })()
-                  : t('header.iotOffline')
-              }
-            </span>
-            <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
-            <span className="tabular-nums text-ink dark:text-chalk">
-              {currentTime.toLocaleTimeString('en-US', { hour12: false })}
-            </span>
-          </div>
-
-          {/* User / theme */}
-          <div className="flex items-center gap-3">
-            <LangToggle />
-            <ThemeToggle />
-            <button
-              onClick={() => window.print()}
-              title={lang === 'th' ? 'พิมพ์รายงาน' : 'Print report'}
-              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
-                         text-muted hover:text-ink hover:border-ink/50
-                         dark:text-chalk-muted dark:hover:text-chalk dark:hover:border-chalk/50
-                         transition-colors duration-200"
-            >
-              <Printer className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-px h-5 bg-hairline dark:bg-coal-700" />
-            <div className="text-right hidden sm:block leading-tight">
-              <p className="text-xs font-semibold text-ink dark:text-chalk">{user?.name || 'Staff'}</p>
-              <p className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
-                {['nurse', 'doctor', 'patient'].includes(user?.role) ? t('role.' + user.role) : t('role.unknown')} · {user?.station || '—'}
-              </p>
-            </div>
-            <button
-              onClick={onLogout}
-              title={t('header.signOut')}
-              className="tap-target w-7 h-7 rounded border border-hairline-strong dark:border-coal-600 flex items-center justify-center
-                         text-muted hover:text-risk-high hover:border-risk-high/50
-                         dark:text-chalk-muted dark:hover:text-risk-highd dark:hover:border-risk-highd/50
-                         transition-colors duration-200"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <TopBar
+        kicker="Triage / v2"
+        telemetry={
+          <TelemetryStrip
+            deviceStatus={deviceStatus}
+            currentTime={currentTime}
+            locale={locale}
+            lang={lang}
+            t={t}
+          />
+        }
+        deviceStatus={deviceStatus}
+        user={user}
+        showRole
+        onPrint={() => window.print()}
+        onLogout={onLogout}
+        t={t}
+      />
 
       {/* ─── MAIN ────────────────────────────────────────────────────── */}
       <main className="relative flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1082,8 +909,14 @@ function Dashboard() {
         <span className="hidden lg:block absolute bottom-1 left-2 font-mono text-[11px] text-hairline-strong dark:text-coal-600 select-none print-hidden" aria-hidden="true">+</span>
 
         {/* ─── 2. PATIENT QUEUE ───────────────────────────────────────── */}
-        <section className="lg:col-span-1 will-fade-up">
-          <div className="card overflow-hidden flex flex-col h-[calc(100vh-10.5rem)] min-h-[500px]">
+        <section
+          className={`lg:col-span-1 will-fade-up ${mobileView === 'record' ? 'hidden lg:block' : 'block'}`}
+          aria-label={t('a11y.patientQueue')}
+        >
+          {/* 100dvh, not 100vh: on mobile Safari and Chrome, 100vh is
+              the height with the address bar hidden, so the last row of
+              the queue sat underneath it. */}
+          <div className="card overflow-hidden flex flex-col h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-10.5rem)] lg:min-h-[500px]">
 
             {/* Panel head */}
             <div className="p-4 border-b border-hairline dark:border-coal-700">
@@ -1107,17 +940,19 @@ function Dashboard() {
               <div className="relative mt-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted dark:text-chalk-muted" />
                 <input
-                  type="text"
+                  type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('queue.search')}
-                  className="field !pl-9 !py-1.5 !text-[13px]"
+                  aria-label={t('queue.search')}
+                  className="field !pl-9 !pr-8 !py-1.5 !text-[13px]
+                             [&::-webkit-search-cancel-button]:appearance-none"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:hover:text-chalk"
-                    aria-label="Clear search"
+                    aria-label={t('a11y.clearSearch')}
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1150,7 +985,8 @@ function Dashboard() {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedPatientId(item.id)}
+                    onClick={() => openPatient(item.id)}
+                    aria-current={isSelected ? 'true' : undefined}
                     className={`relative w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors duration-200 ${
                       isSelected
                         ? 'bg-med-600/[0.06] dark:bg-med-300/[0.07]'
@@ -1202,7 +1038,18 @@ function Dashboard() {
         </section>
 
         {/* ─── 3. PATIENT RECORD ──────────────────────────────────────── */}
-        <section className="lg:col-span-2 flex flex-col gap-5">
+        <section
+          className={`lg:col-span-2 lg:flex flex-col gap-5 ${mobileView === 'queue' ? 'hidden' : 'flex'}`}
+        >
+          {/* The way back out of the record on a phone. On desktop both
+              panes are visible, so it would be a button to nowhere. */}
+          <button
+            type="button"
+            onClick={() => setMobileView('queue')}
+            className="lg:hidden self-start btn-line !py-2 print-hidden"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" /> {t('queue.backToQueue')}
+          </button>
 
           {/* Identity */}
           <div className="card p-5 will-fade-up animate-delay-100">
@@ -1308,17 +1155,11 @@ function Dashboard() {
               )}
             </SectionHead>
 
-            {/* Abnormal summary chip */}
+            {/* Abnormal summary chip. The counts come from the same
+                spec table the cells below are drawn from, so the
+                headline and the readings can never disagree. */}
             {!isEditing && (() => {
-              const vals = [
-                { ok: !has(v.spo2) || v.spo2 >= 95 },
-                { ok: !has(v.heartRate) || v.heartRate <= 100 },
-                { ok: !has(v.systolicBP) || v.systolicBP <= 140 },
-                { ok: !has(v.wbc) || v.wbc <= 11000 },
-                { ok: !has(v.hemoglobin) || v.hemoglobin >= 12 },
-              ];
-              const abnormal = vals.filter(x => !x.ok).length;
-              const measured = [v.spo2, v.heartRate, v.systolicBP, v.wbc, v.hemoglobin].filter(x => has(x)).length;
+              const { measured, abnormal } = summariseVitals(v);
               if (measured === 0) return null;
               return (
                 <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
@@ -1334,202 +1175,30 @@ function Dashboard() {
               );
             })()}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-3">
-
-              {/* SpO2 */}
-              <div className="bg-surface dark:bg-coal-900 p-4">
-                <div className="flex justify-between items-baseline">
-                  <p className="microlabel">{t('vitals.spo2')}</p>
-                  {(has(v.spo2) && v.spo2 < 95) && (
-                    <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">▼ {t('tag.low')}</span>
-                  )}
-                </div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    min="0"
-                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                    value={editedVitals.spo2 || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, spo2: Math.max(0, parseInt(e.target.value) || 0) }))}
-                    className="field mt-2 !text-lg !font-light tabular-nums"
-                  />
-                ) : (
-                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (has(v.spo2) && v.spo2 < 95) ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
-                  }`}>
-                    {has(v.spo2) ? v.spo2 : '—'}
-                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1">%</span>
-                  </p>
-                )}
-                {has(v.spo2) && <TickBar value={v.spo2} min={85} max={100} okMin={95} okMax={100}
-                  tone={v.spo2 < 95 ? 'bad' : 'ok'} />}
-                <p className="datum mt-2.5">{t('vitals.ref')} 95–100</p>
-              </div>
-
-              {/* Heart rate */}
-              <div className="bg-surface dark:bg-coal-900 p-4">
-                <div className="flex justify-between items-baseline">
-                  <p className="microlabel">{t('vitals.hr')}</p>
-                  {(has(v.heartRate) && v.heartRate > 100) && (
-                    <span className="font-mono text-[11px] font-medium text-risk-high dark:text-risk-highd">▲ {t('tag.high')}</span>
-                  )}
-                </div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    min="0"
-                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                    value={editedVitals.heartRate || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, heartRate: Math.max(0, parseInt(e.target.value) || 0) }))}
-                    className="field mt-2 !text-lg !font-light tabular-nums"
-                  />
-                ) : (
-                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (has(v.heartRate) && v.heartRate > 100) ? 'text-risk-high dark:text-risk-highd' : 'text-ink dark:text-chalk'
-                  }`}>
-                    {has(v.heartRate) ? v.heartRate : '—'}
-                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">bpm</span>
-                  </p>
-                )}
-                {has(v.heartRate) && <TickBar value={v.heartRate} min={40} max={140} okMin={60} okMax={100}
-                  tone={v.heartRate > 100 ? 'bad' : 'ok'} />}
-                <p className="datum mt-2.5">{t('vitals.ref')} 60–100</p>
-              </div>
-
-              {/* Blood pressure */}
-              <div className="bg-surface dark:bg-coal-900 p-4">
-                <div className="flex justify-between items-baseline">
-                  <p className="microlabel">{t('vitals.bp')}</p>
-                  {(has(v.systolicBP) && v.systolicBP > 140) && (
-                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
-                  )}
-                </div>
-                {isEditing ? (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <input
-                      type="number"
-                      min="0"
-                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                      value={editedVitals.systolicBP || ''}
-                      onChange={(e) => setEditedVitals(prev => ({ ...prev, systolicBP: Math.max(0, parseInt(e.target.value) || 0) }))}
-                      className="field !text-lg !font-light tabular-nums"
-                    />
-                    <span className="text-muted">/</span>
-                    <input
-                      type="number"
-                      min="0"
-                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                      value={editedVitals.diastolicBP || ''}
-                      onChange={(e) => setEditedVitals(prev => ({ ...prev, diastolicBP: Math.max(0, parseInt(e.target.value) || 0) }))}
-                      className="field !text-lg !font-light tabular-nums"
-                    />
-                  </div>
-                ) : (
-                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (has(v.systolicBP) && v.systolicBP > 140) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
-                  }`}>
-                    {has(v.systolicBP) ? v.systolicBP : '—'}/{has(v.diastolicBP) ? v.diastolicBP : '—'}
-                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">mmHg</span>
-                  </p>
-                )}
-                {has(v.systolicBP) && <TickBar value={v.systolicBP} min={80} max={180} okMin={90} okMax={120}
-                  tone={v.systolicBP > 140 ? 'warn' : 'ok'} />}
-                <p className="datum mt-2.5">{t('vitals.ref')} &lt;120/80</p>
-              </div>
-
-              {/* WBC */}
-              <div className="bg-surface dark:bg-coal-900 p-4">
-                <div className="flex justify-between items-baseline">
-                  <p className="microlabel">{t('vitals.wbc')}</p>
-                  {(has(v.wbc) && v.wbc > 11000) && (
-                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▲ {t('tag.high')}</span>
-                  )}
-                </div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    min="0"
-                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                    value={editedVitals.wbc || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, wbc: Math.max(0, parseInt(e.target.value) || 0) }))}
-                    className="field mt-2 !text-lg !font-light tabular-nums"
-                  />
-                ) : (
-                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (has(v.wbc) && v.wbc > 11000) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
-                  }`}>
-                    {has(v.wbc) ? v.wbc.toLocaleString() : '—'}
-                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">/mcL</span>
-                  </p>
-                )}
-                {has(v.wbc) && <TickBar value={v.wbc} min={2000} max={20000} okMin={4500} okMax={11000}
-                  tone={v.wbc > 11000 ? 'warn' : 'ok'} />}
-                <p className="datum mt-2.5">{t('vitals.ref')} 4,500–11,000</p>
-              </div>
-
-              {/* Hemoglobin */}
-              <div className="bg-surface dark:bg-coal-900 p-4">
-                <div className="flex justify-between items-baseline">
-                  <p className="microlabel">{t('vitals.hgb')}</p>
-                  {(has(v.hemoglobin) && v.hemoglobin < 12) && (
-                    <span className="font-mono text-[11px] font-medium text-risk-mod dark:text-risk-modd">▼ {t('tag.low')}</span>
-                  )}
-                </div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                    value={editedVitals.hemoglobin || ''}
-                    onChange={(e) => setEditedVitals(prev => ({ ...prev, hemoglobin: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                    className="field mt-2 !text-lg !font-light tabular-nums"
-                  />
-                ) : (
-                  <p className={`text-[26px] font-light leading-none tabular-nums mt-2.5 ${
-                    (has(v.hemoglobin) && v.hemoglobin < 12) ? 'text-risk-mod dark:text-risk-modd' : 'text-ink dark:text-chalk'
-                  }`}>
-                    {has(v.hemoglobin) ? v.hemoglobin : '—'}
-                    <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">g/dL</span>
-                  </p>
-                )}
-                {has(v.hemoglobin) && <TickBar value={v.hemoglobin} min={8} max={20} okMin={12} okMax={17.5}
-                  tone={v.hemoglobin < 12 ? 'warn' : 'ok'} />}
-                <p className="datum mt-2.5">{t('vitals.ref')} 12.0–17.5</p>
-              </div>
-
+            <VitalsGrid
+              vitals={v}
+              isEditing={isEditing}
+              edited={editedVitals}
+              onEdit={setEditedVitals}
+              t={t}
+            >
               {/* Reserved slot */}
               <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
                 <p className="microlabel">{t('vitals.reserved')}</p>
                 <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
               </div>
-            </div>
+            </VitalsGrid>
           </div>
 
           {/* Bio-acoustics */}
           <div className="card p-5 will-fade-up animate-delay-300">
             <SectionHead index="03" title={t('audio.title')}>
-              <div className="flex gap-4">
-                {['lung', 'heart', 'cough'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setActiveAudioTab(tab);
-                      setIsPlaying(false);
-                      setPlayProgress(0);
-                    }}
-                    // py-2.5 is not decoration: at pb-0.5 these tabs
-                    // were a 19px-tall tap target on a phone.
-                    className={`text-[13px] capitalize text-center min-w-[2.75rem] px-1 py-2.5 border-b-2 transition-colors duration-200 ${
-                      activeAudioTab === tab
-                        ? 'font-semibold text-ink dark:text-chalk border-med-600 dark:border-med-300'
-                        : 'font-medium text-muted dark:text-chalk-muted border-transparent hover:text-ink dark:hover:text-chalk'
-                    }`}
-                  >
-                    {t('audio.' + tab)}
-                  </button>
-                ))}
-              </div>
+              <AudioTypeTabs
+                active={activeAudioTab}
+                onChange={setActiveAudioTab}
+                audioLogs={patient?.audioLogs}
+                t={t}
+              />
             </SectionHead>
 
             <div className="mt-4">
@@ -1549,66 +1218,13 @@ function Dashboard() {
                     <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                   </div>
 
-                  {/* Player — an ink panel in both themes */}
-                  <div className="mt-3 bg-ink dark:bg-coal-850 dark:border dark:border-coal-700 rounded-md p-4 flex items-center gap-4">
-                    <button
-                      onClick={handleTogglePlay}
-                      className="w-10 h-10 rounded bg-med-500 hover:bg-med-400 text-white flex items-center justify-center
-                                 flex-shrink-0 transition-colors duration-200 active:translate-y-px"
-                    >
-                      {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
-                    </button>
-
-                    {/* Waveform — the real amplitude envelope measured
-                        from the recording, with the segments the engine
-                        flagged marked underneath. Falls back to a flat
-                        bar only when no analysis exists yet. */}
-                    <div className="relative flex-1 h-10 flex items-center gap-[2px] overflow-hidden">
-                      <div
-                        className="absolute top-0 bottom-0 left-0 border-r border-white/50 transition-all duration-300 z-10"
-                        style={{ width: `${playProgress}%` }}
-                      />
-                      {(() => {
-                        const env = currentAnalysis?.waveform;
-                        const bars = env && env.length ? env : new Array(70).fill(0.25);
-                        const duration = currentAnalysis?.durationSec || 0;
-                        return bars.map((amp, i) => {
-                          const active = (i / bars.length) * 100 <= playProgress;
-                          // Is this slice inside a flagged segment?
-                          const tSec = duration ? (i / bars.length) * duration : -1;
-                          const flagged = duration > 0 && (currentAnalysis?.segments || []).some(
-                            (s) => s.type !== 'heart_sound' && tSec >= s.start && tSec <= s.end
-                          );
-                          return (
-                            <div
-                              key={i}
-                              className={`flex-1 min-w-[1px] rounded-[1px] transition-colors duration-300 ${
-                                flagged
-                                  ? 'bg-risk-modd'
-                                  : active
-                                    ? `bg-med-400 ${isPlaying ? 'eq-bar' : ''}`
-                                    : 'bg-white/15'
-                              }`}
-                              style={{
-                                height: `${Math.max(3, amp * 34)}px`,
-                                animationDelay: `${(i % 6) * 0.11}s`,
-                              }}
-                            />
-                          );
-                        });
-                      })()}
-                    </div>
-
-                    <span className="font-mono text-[11px] text-chalk-muted tabular-nums w-9 text-right shrink-0">
-                      {playProgress}%
-                    </span>
-                  </div>
-
-                  {playbackError && (
-                    <p className="note mt-2 !text-risk-high dark:!text-risk-highd">
-                      {playbackError}
-                    </p>
-                  )}
+                  <AudioPlayer
+                    player={player}
+                    waveform={currentAnalysis?.waveform}
+                    segments={currentAnalysis?.segments}
+                    durationSec={currentAnalysis?.durationSec || 0}
+                    t={t}
+                  />
 
                   {/* Manage the stored recording */}
                   <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
@@ -1821,7 +1437,7 @@ function Dashboard() {
                   type={activeAudioTab}
                   canReview={canReview}
                   running={analysisRunning}
-                  progress={playProgress}
+                  progress={player.progress}
                   isDark={isDark}
                   onRun={handleRunAnalysis}
                   onReview={handleReview}

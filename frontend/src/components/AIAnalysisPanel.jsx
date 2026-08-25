@@ -15,7 +15,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import {
   Check,
   X,
@@ -48,11 +48,16 @@ export default function AIAnalysisPanel({
   reviewSubmitting,
 }) {
   const { t, lang } = useLang();
+  // Timestamps followed the browser locale, so a Thai UI printed
+  // "8/24/2026, 9:12:03 AM" beside Thai labels.
+  const locale = lang === 'th' ? 'th-TH' : 'en-GB';
   const [mode, setMode] = useState(null); // null | 'modify' | 'reject'
   const [note, setNote] = useState('');
   const [overrideLabel, setOverrideLabel] = useState('');
   const [overrideTriage, setOverrideTriage] = useState('');
   const [error, setError] = useState('');
+  const uid = useId().replace(/:/g, '');
+  const fid = (name) => uid + '-' + name;
 
   const labelText = (key) => clinicalLabel(key, lang);
 
@@ -138,6 +143,8 @@ export default function AIAnalysisPanel({
 
       {/* ─── Review status banner ─────────────────────────────────── */}
       <div
+        role="status"
+        aria-live="polite"
         className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded border ${
           isReviewed
             ? isRejected
@@ -168,7 +175,7 @@ export default function AIAnalysisPanel({
           </p>
           {isReviewed && (
             <p className="prose-clinical mt-1">
-              {review.doctorName} · {new Date(review.reviewedAt).toLocaleString()}
+              {review.doctorName} · {new Date(review.reviewedAt).toLocaleString(locale)}
               {review.note && <span className="block mt-1 italic">“{review.note}”</span>}
             </p>
           )}
@@ -316,12 +323,17 @@ export default function AIAnalysisPanel({
                 >
                   <Check className="w-3.5 h-3.5" /> {t('ai.confirm')}
                 </button>
-                <button onClick={() => setMode('modify')} className="btn-line flex-1">
+                <button
+                  onClick={() => setMode('modify')}
+                  disabled={reviewSubmitting}
+                  className="btn-line flex-1 disabled:opacity-50"
+                >
                   <Pencil className="w-3 h-3" /> {t('ai.modify')}
                 </button>
                 <button
                   onClick={() => setMode('reject')}
-                  className="btn-line flex-1 !border-risk-high/40 !text-risk-high hover:!bg-risk-high/[0.06]
+                  disabled={reviewSubmitting}
+                  className="btn-line flex-1 disabled:opacity-50 !border-risk-high/40 !text-risk-high hover:!bg-risk-high/[0.06]
                              dark:!border-risk-highd/40 dark:!text-risk-highd"
                 >
                   <X className="w-3 h-3" /> {t('ai.reject')}
@@ -332,8 +344,9 @@ export default function AIAnalysisPanel({
                 {mode === 'modify' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="microlabel block mb-1.5">{t('ai.yourDiagnosis')}</label>
+                      <label htmlFor={fid('label')} className="microlabel block mb-1.5">{t('ai.yourDiagnosis')}</label>
                       <select
+                        id={fid('label')}
                         value={overrideLabel}
                         onChange={(e) => setOverrideLabel(e.target.value)}
                         className="field"
@@ -345,8 +358,9 @@ export default function AIAnalysisPanel({
                       </select>
                     </div>
                     <div>
-                      <label className="microlabel block mb-1.5">{t('ai.yourTriage')}</label>
+                      <label htmlFor={fid('triage')} className="microlabel block mb-1.5">{t('ai.yourTriage')}</label>
                       <select
+                        id={fid('triage')}
                         value={overrideTriage}
                         onChange={(e) => setOverrideTriage(e.target.value)}
                         className="field"
@@ -361,10 +375,11 @@ export default function AIAnalysisPanel({
                 )}
 
                 <div>
-                  <label className="microlabel block mb-1.5">
+                  <label htmlFor={fid('note')} className="microlabel block mb-1.5">
                     {mode === 'reject' ? t('ai.noteRequired') : t('ai.noteOptional')}
                   </label>
                   <textarea
+                    id={fid('note')}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     rows={2}
@@ -375,11 +390,13 @@ export default function AIAnalysisPanel({
                 </div>
 
                 {error && (
-                  <p className="note !text-risk-high dark:!text-risk-highd">{error}</p>
+                  <p role="alert" className="note !text-risk-high dark:!text-risk-highd">{error}</p>
                 )}
 
                 <div className="flex gap-2">
-                  <button onClick={resetForm} className="btn-line">{t('common.cancel')}</button>
+                  <button onClick={resetForm} disabled={reviewSubmitting} className="btn-line disabled:opacity-50">
+                    {t('common.cancel')}
+                  </button>
                   <button
                     onClick={() => submit(mode)}
                     disabled={reviewSubmitting}
@@ -406,7 +423,7 @@ export default function AIAnalysisPanel({
       {/* ─── Provenance ───────────────────────────────────────────── */}
       <p className="datum pt-1 block leading-relaxed">
         {analysis.modelVersion} · {analysis.method} · {analysis.processingMs}ms ·{' '}
-        {new Date(analysis.analyzedAt).toLocaleString()}
+        {new Date(analysis.analyzedAt).toLocaleString(locale)}
         <button
           onClick={onRun}
           disabled={running}

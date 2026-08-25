@@ -8,26 +8,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Eye, EyeOff } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 import LangToggle from '../../components/LangToggle';
+import PulseMark from '../../components/ui/PulseMark';
 import { useLang } from '../../i18n/LanguageContext';
 import { register } from '../../services/api';
-
-function PulseMark({ className = 'w-4 h-4' }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <path
-        d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export default function RegisterPage() {
   const { t } = useLang();
@@ -137,15 +124,18 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {error && (
-              <div className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
+              <div role="alert" className="border-l-2 border-risk-high dark:border-risk-highd bg-risk-high/[0.05] dark:bg-risk-highd/[0.07] px-3 py-2.5 animate-fade-in">
                 <p className="text-xs text-risk-high dark:text-risk-highd">{error}</p>
               </div>
             )}
 
             <div>
-              <label className="microlabel block mb-1.5">{t('register.fullName')}</label>
+              <label htmlFor="reg-name" className="microlabel block mb-1.5">{t('register.fullName')}</label>
               <input
+                id="reg-name"
+                name="name"
                 type="text"
+                autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('register.namePh')}
@@ -156,9 +146,13 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="microlabel block mb-1.5">{t('login.email')}</label>
+              <label htmlFor="reg-email" className="microlabel block mb-1.5">{t('login.email')}</label>
               <input
+                id="reg-email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@wellsim.com"
@@ -169,8 +163,10 @@ export default function RegisterPage() {
 
             {/* Role — segmented control */}
             <div>
-              <label className="microlabel block mb-1.5">{t('register.role')}</label>
-              <div className="grid grid-cols-3 gap-2">
+              {/* Three buttons, not a field: a <label> here pointed at
+                  nothing. A labelled group is what this actually is. */}
+              <p className="microlabel block mb-1.5" id="reg-role-label">{t('register.role')}</p>
+              <div className="grid grid-cols-3 gap-2" role="group" aria-labelledby="reg-role-label">
                 <button
                   type="button"
                   onClick={() => setRole('nurse')}
@@ -200,9 +196,12 @@ export default function RegisterPage() {
 
             {role !== 'patient' && (
               <div>
-                <label className="microlabel block mb-1.5">{t('register.station')} <span className="normal-case tracking-normal">{t('register.optional')}</span></label>
+                <label htmlFor="reg-station" className="microlabel block mb-1.5">{t('register.station')} <span className="normal-case tracking-normal">{t('register.optional')}</span></label>
                 <input
+                  id="reg-station"
+                  name="station"
                   type="text"
+                  autoComplete="organization"
                   value={station}
                   onChange={(e) => setStation(e.target.value)}
                   placeholder={role === 'doctor' ? t('register.stationPhDoctor') : t('register.stationPhNurse')}
@@ -216,8 +215,10 @@ export default function RegisterPage() {
                 form. The server rejects the request without this. */}
             {role !== 'patient' && (
               <div>
-                <label className="microlabel block mb-1.5">{t('register.staffCode')}</label>
+                <label htmlFor="reg-staffcode" className="microlabel block mb-1.5">{t('register.staffCode')}</label>
                 <input
+                  id="reg-staffcode"
+                  name="staffCode"
                   type="password"
                   value={staffCode}
                   onChange={(e) => setStaffCode(e.target.value)}
@@ -232,10 +233,13 @@ export default function RegisterPage() {
             )}
 
             <div>
-              <label className="microlabel block mb-1.5">{t('login.password')}</label>
+              <label htmlFor="reg-password" className="microlabel block mb-1.5">{t('login.password')}</label>
               <div className="relative">
                 <input
+                  id="reg-password"
+                  name="new-password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={t('register.passwordPh')}
@@ -246,8 +250,8 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:text-chalk-muted dark:hover:text-chalk transition-colors"
+                  aria-label={showPassword ? t('a11y.hidePassword') : t('a11y.showPassword')}
+                  className="tap-target absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink dark:text-chalk-muted dark:hover:text-chalk transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -255,9 +259,12 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="microlabel block mb-1.5">{t('register.confirm')}</label>
+              <label htmlFor="reg-confirm" className="microlabel block mb-1.5">{t('register.confirm')}</label>
               <input
+                id="reg-confirm"
+                name="confirm-password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder={t('register.confirmPh')}
@@ -292,9 +299,9 @@ export default function RegisterPage() {
 
           <p className="text-xs text-muted dark:text-chalk-muted mt-5 pt-5 border-t border-hairline dark:border-coal-700 text-center">
             {t('register.have')}{' '}
-            <a href="/login" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
+            <Link href="/login" className="font-medium text-med-600 dark:text-med-300 hover:underline underline-offset-2">
               {t('register.signIn')}
-            </a>
+            </Link>
           </p>
         </div>
 

@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import LoadingScreen from './ui/LoadingScreen';
 import { useLang } from '../i18n/LanguageContext';
 import { verifySession } from '../services/api';
 
@@ -60,19 +61,7 @@ export default function RouteGuard({ children }) {
   // Quiet instrument-style loader: mark, sweep line, mono caption
   if (isChecking || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-paper dark:bg-coal-950 flex items-center justify-center transition-colors duration-300">
-        <div className="text-center animate-fade-in">
-          <div className="w-8 h-8 mx-auto rounded bg-ink dark:bg-chalk flex items-center justify-center">
-            <svg viewBox="0 0 16 16" className="w-4 h-4 text-white dark:text-coal-950">
-              <path d="M1 8h3.2l1.6-4.5 2.9 9 1.9-4.5H15" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <div className="relative w-40 h-px bg-hairline dark:bg-coal-700 mx-auto mt-6 overflow-hidden">
-            <div className="absolute inset-y-0 w-12 bg-ink dark:bg-chalk animate-sweep" />
-          </div>
-          <p className="microlabel mt-4">{t('guard.verifying')}</p>
-        </div>
-      </div>
+      <LoadingScreen label={t('guard.verifying')} />
     );
   }
 
