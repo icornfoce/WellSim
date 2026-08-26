@@ -27,14 +27,12 @@ import {
   ShieldCheck,
   Upload,
   Mic,
-  Laptop,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
-import { useDeviceData } from '../hooks/useDeviceData';
 import RouteGuard from '../components/RouteGuard';
 import PatientFormModal from '../components/PatientFormModal';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
@@ -96,7 +94,6 @@ export default function Page() {
 
 function Dashboard() {
   const router = useRouter();
-  const { deviceStatus } = useDeviceData();
   const { t, lang } = useLang();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -309,21 +306,12 @@ function Dashboard() {
   const currentAudioUrl = resolveAudioUrl(API_URL, patient?.audioLogs?.[activeAudioTab]);
   const player = useAudioPlayback({ url: currentAudioUrl, t });
 
-  const [isTriggeringESP32, setIsTriggeringESP32] = useState(false);
-  // One status line shared by every capture route (device, mic, upload)
+  // Audio capture state
   const [captureMessage, setCaptureMessage] = useState('');
   const [isBrowserRecording, setIsBrowserRecording] = useState(false);
   const [browserRecordTime, setBrowserRecordTime] = useState(0);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
-  const esp32PollRef = useRef(null);
-
-  const stopEsp32Poll = useCallback(() => {
-    if (esp32PollRef.current) {
-      clearInterval(esp32PollRef.current);
-      esp32PollRef.current = null;
-    }
-  }, []);
 
   // File upload / delete
   const fileInputRef = useRef(null);
@@ -332,15 +320,9 @@ function Dashboard() {
 
   /**
    * Upload an audio file from the user's computer.
-   *
-   * Anything the browser can decode is accepted and converted to the
-   * same 16 kHz mono WAV the ESP32 sends, so a file dropped in here
-   * reaches the analysis engine in exactly the same shape as a live
-   * capture. Screening then happens server-side on arrival.
    */
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
-    // Reset immediately so re-picking the same file still fires onChange
     event.target.value = '';
     if (!file || !patient) return;
 
@@ -429,70 +411,11 @@ function Dashboard() {
     }
   };
 
-  const triggerESP32Record = async () => {
-    try {
-      setIsTriggeringESP32(true);
-      setCaptureMessage(t('audio.esp32Sending'));
-
-      // Goes through the API client so the session token is attached —
-      // this endpoint now requires an authenticated user or a device key
-      const data = await apiSendDeviceCommand({
-        deviceId: 'ESP32-INMP441-A',
-        command: 'record',
-        patientId: patient.id,
-        type: activeAudioTab,
-      }).catch((err) => ({ success: false, error: err.message }));
-
-      if (data.success) {
-        setCaptureMessage(t('audio.esp32Waiting'));
-
-        // Held in a ref so switching patient or leaving the page stops
-        // the poll. It used to be a bare local, which kept hitting the
-        // API for another 30 s after the dashboard had moved on.
-        let attempts = 0;
-        esp32PollRef.current = setInterval(async () => {
-          attempts++;
-          try {
-            const patientsRes = await fetchPatients();
-            if (patientsRes.success && patientsRes.patients) {
-              const updatedPatient = patientsRes.patients.find(p => p.id === patient.id);
-              if (updatedPatient && updatedPatient.audioLogs?.[activeAudioTab]?.available) {
-                stopEsp32Poll();
-                setIsTriggeringESP32(false);
-                setCaptureMessage('');
-                loadPatients();
-                // The recording is screened server-side on arrival —
-                // pull the result so the dashboard shows it immediately
-                loadAnalyses(patient.id);
-                return;
-              }
-            }
-          } catch (e) {
-            console.error('Polling error:', e);
-          }
-
-          if (attempts > 20) {
-            stopEsp32Poll();
-            setIsTriggeringESP32(false);
-            setCaptureMessage(t('audio.esp32Timeout'));
-          }
-        }, 1500);
-      } else {
-        setIsTriggeringESP32(false);
-        setCaptureMessage(t('audio.esp32Failed', { error: data.error }));
-      }
-    } catch (err) {
-      setIsTriggeringESP32(false);
-      setCaptureMessage(t('audio.networkError', { error: err.message }));
-    }
-  };
-
   const startBrowserRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
-      // Detect supported mime type
       let options = {};
       let detectedMime = 'audio/wav';
       if (MediaRecorder.isTypeSupported('audio/webm')) {
@@ -520,9 +443,6 @@ function Dashboard() {
         stream.getTracks().forEach(track => track.stop());
 
         try {
-          // Transcode to PCM WAV so the analysis engine can actually read
-          // it — MediaRecorder emits WebM/Opus or MP4/AAC, neither of
-          // which the engine decodes.
           setCaptureMessage(t('audio.stepConverting'));
           const wav = await encodeWavFromBlob(audioBlob);
           const mins = Math.floor(wav.durationSec / 60);
@@ -536,7 +456,6 @@ function Dashboard() {
             deviceId: 'BROWSER-MIC',
           });
           if (data.success) {
-            // The backend screens on upload — pick the result straight up
             if (data.analysis) {
               setAnalyses((prev) => ({ ...prev, [activeAudioTab]: data.analysis }));
             }
@@ -557,8 +476,6 @@ function Dashboard() {
       setIsBrowserRecording(true);
       setBrowserRecordTime(0);
 
-      // The engine needs at least 3 s of signal and reads breathing
-      // cycles best over several breaths — 10 s is the sweet spot.
       const MAX_SECONDS = 10;
       let time = 0;
       const interval = setInterval(() => {
@@ -588,11 +505,9 @@ function Dashboard() {
     }
   };
 
-  // Clean up recording and the device poll on unmount. Playback is
-  // released by useAudioPlayback.
+  // Clean up recording on unmount
   useEffect(() => {
     return () => {
-      stopEsp32Poll();
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
         if (mediaRecorderRef.current.timerInterval) {
@@ -600,20 +515,9 @@ function Dashboard() {
         }
       }
     };
-  }, [stopEsp32Poll]);
+  }, []);
 
-  /**
-   * Reset capture and playback when the clinician moves to another
-   * patient or another recording.
-   *
-   * Keyed on `selectedPatientId`, not on the `patient` object: the
-   * object is replaced on every write to the patient list (saving
-   * vitals, running a screening, uploading audio), and this effect
-   * used to fire on each of those and silently discard whatever the
-   * nurse had typed into the vitals form.
-   */
   useEffect(() => {
-    stopEsp32Poll();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       if (mediaRecorderRef.current.timerInterval) {
@@ -621,11 +525,10 @@ function Dashboard() {
       }
     }
     setIsBrowserRecording(false);
-    setIsTriggeringESP32(false);
     setCaptureMessage('');
     setIsEditing(false);
     setAiPanelCollapsed(false);
-  }, [selectedPatientId, activeAudioTab, stopEsp32Poll]);
+  }, [selectedPatientId, activeAudioTab]);
 
   // Seed the vitals form from the record — but never overwrite an edit
   // in progress, which is what the combined effect above used to do.
@@ -801,14 +704,12 @@ function Dashboard() {
           kicker="Triage / v2"
           telemetry={
             <TelemetryStrip
-              deviceStatus={deviceStatus}
               currentTime={currentTime}
               locale={locale}
               lang={lang}
               t={t}
             />
           }
-          deviceStatus={deviceStatus}
           user={user}
           showRole
           onLogout={onLogout}
@@ -876,23 +777,17 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-paper dark:bg-coal-950 flex flex-col font-sans transition-colors duration-300">
-      {/* Urgency is carried by the AI triage badge and the queue ordering,
-          which are driven by the analysis engine. A second banner running
-          its own vitals-only rule could contradict them. */}
-
       {/* ─── 1. TOP BAR ──────────────────────────────────────────────── */}
       <TopBar
         kicker="Triage / v2"
         telemetry={
           <TelemetryStrip
-            deviceStatus={deviceStatus}
             currentTime={currentTime}
             locale={locale}
             lang={lang}
             t={t}
           />
         }
-        deviceStatus={deviceStatus}
         user={user}
         showRole
         onPrint={() => window.print()}
@@ -1328,23 +1223,15 @@ function Dashboard() {
                         <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
                         <div className="flex flex-wrap justify-center gap-3">
                           <button
-                            onClick={triggerESP32Record}
-                            disabled={isTriggeringESP32 || uploadState.busy}
-                            className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
-                            title={t('audio.useEsp32')}
-                          >
-                            <Laptop className="w-3.5 h-3.5" /> {t('audio.useEsp32')}
-                          </button>
-                          <button
                             onClick={startBrowserRecording}
-                            disabled={isTriggeringESP32 || uploadState.busy}
+                            disabled={uploadState.busy}
                             className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
                           >
                             <Mic className="w-3.5 h-3.5" /> {t('audio.useBrowserMic')}
                           </button>
                           <button
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={isTriggeringESP32 || uploadState.busy}
+                            disabled={uploadState.busy}
                             className="btn-ink disabled:opacity-50"
                           >
                             <Upload className="w-3.5 h-3.5" />

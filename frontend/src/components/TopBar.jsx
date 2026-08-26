@@ -1,20 +1,11 @@
 /**
  * WellSim — The sticky top bar.
- *
- * Three near-copies of this existed: the clinician dashboard, the
- * dashboard's own empty state, and the patient portal. They had
- * already drifted — the empty-state copy still printed its clock in
- * `en-US` under a Thai UI, and never got the device indicator the
- * other one carries on a phone.
- *
- * The parts that genuinely differ between screens come in as props:
- * the kicker beside the wordmark, the content width, whether there is
- * a telemetry strip, and how much of the signed-in user to show.
  */
 
 'use client';
 
-import { LogOut, Printer } from 'lucide-react';
+import React from 'react';
+import { LogOut, Printer, Activity } from 'lucide-react';
 import PulseMark from './ui/PulseMark';
 import ThemeToggle from './ThemeToggle';
 import LangToggle from './LangToggle';
@@ -27,7 +18,6 @@ export default function TopBar({
   kicker,
   width = 'max-w-7xl',
   telemetry = null,
-  deviceStatus = null,
   user = null,
   showRole = false,
   onPrint = null,
@@ -52,29 +42,6 @@ export default function TopBar({
         {telemetry}
 
         <div className="flex items-center gap-3">
-          {/* Phone-sized stand-in for the telemetry strip, which is
-              hidden below md. Whether the device is reachable at all is
-              the one fact worth keeping on the screen people are most
-              likely to check it from. */}
-          {deviceStatus && (
-            <span
-              className="md:hidden flex items-center"
-              title={deviceStatus.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
-            >
-              <span
-                aria-hidden="true"
-                className={`w-1.5 h-1.5 rounded-[1px] ${
-                  deviceStatus.status === 'online'
-                    ? 'bg-med-500 dark:bg-med-300 animate-blink'
-                    : 'bg-risk-high dark:bg-risk-highd'
-                }`}
-              />
-              <span className="sr-only">
-                {deviceStatus.status === 'online' ? t('header.iotOnline') : t('header.iotOffline')}
-              </span>
-            </span>
-          )}
-
           <LangToggle />
           <ThemeToggle />
 
@@ -122,41 +89,22 @@ export default function TopBar({
 }
 
 /**
- * The dashboard's telemetry strip: device link, signal, clock.
- * Hidden below `md`, where the dot in the bar stands in for it.
+ * The dashboard's telemetry strip: system status, live clock.
  */
-export function TelemetryStrip({ deviceStatus, currentTime, locale, lang, t }) {
-  const lastSeenMs = deviceStatus?.last_seen_ago_ms;
-  const recentlySeen = lastSeenMs > 0 && lastSeenMs < 3_600_000;
-  const mins = Math.floor((lastSeenMs || 0) / 60_000);
-
-  let linkLabel;
-  if (deviceStatus?.status === 'online') {
-    linkLabel = t('header.iotOnline');
-  } else if (recentlySeen) {
-    linkLabel = lang === 'th'
-      ? `IOT · เห็นล่าสุด ${mins > 0 ? `${mins}น.` : '<1น.'} ที่แล้ว`
-      : `IOT · last seen ${mins > 0 ? `${mins}m` : '<1m'} ago`;
-  } else {
-    linkLabel = t('header.iotOffline');
-  }
-
+export function TelemetryStrip({ currentTime, locale, lang, t }) {
   return (
     <div className="hidden md:flex items-center gap-6 font-mono text-[11px] text-muted dark:text-chalk-muted">
       <span className="flex items-center gap-2">
         <span
           aria-hidden="true"
-          className={`w-1.5 h-1.5 rounded-[1px] ${
-            deviceStatus?.status === 'online'
-              ? 'bg-med-500 dark:bg-med-300 animate-blink'
-              : 'bg-risk-high dark:bg-risk-highd'
-          }`}
+          className="w-1.5 h-1.5 rounded-[1px] bg-med-500 dark:bg-med-300 animate-blink"
         />
-        {linkLabel}
+        <span className="text-med-700 dark:text-med-300 font-medium">
+          {lang === 'th' ? 'ระบบคัดกรองพร้อมใช้งาน' : 'SYSTEM ONLINE'}
+        </span>
       </span>
-      <span>RSSI {deviceStatus?.wifi_strength ? `${deviceStatus.wifi_strength} dBm` : '—'}</span>
       <span className="tabular-nums text-ink dark:text-chalk">
-        {currentTime.toLocaleTimeString(locale, { hour12: false })}
+        {currentTime ? currentTime.toLocaleTimeString(locale, { hour12: false }) : ''}
       </span>
     </div>
   );
