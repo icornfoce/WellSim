@@ -13,6 +13,19 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Pastel shades
+        pastel: {
+          50: '#FFF9F5',
+          100: '#FDE6DC',
+          200: '#FCD2C1',
+          300: '#FBBDA5',
+          400: '#FAA788',
+          500: '#F9926C',
+          600: '#E57A55',
+          700: '#C66244',
+          800: '#A84A33',
+          900: '#8A3322',
+        },
         // Light surfaces
         paper:   '#F6F6F4', // page background — warm grey, not blue
         surface: '#FFFFFF', // cards
