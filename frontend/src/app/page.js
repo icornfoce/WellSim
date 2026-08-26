@@ -159,7 +159,7 @@ function Dashboard() {
 
   // AI panel — collapsed summary mode for faster scanning
 const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
-const [labSectionCollapsed, setLabSectionCollapsed] = useState(false);
+  const [vitalsCollapsed, setVitalsCollapsed] = useState(false);
 const [audioSectionCollapsed, setAudioSectionCollapsed] = useState(false);
 const [reviewSectionCollapsed, setReviewSectionCollapsed] = useState(false);
 const [labResultCollapsed, setLabResultCollapsed] = useState(false);
@@ -1289,7 +1289,12 @@ const [labResultCollapsed, setLabResultCollapsed] = useState(false);
 
                       <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
                     </div>
-                  ) : (
+                                  <button
+                  onClick={() => setAiPanelCollapsed(v => !v)}
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                  title={aiPanelCollapsed ? 'Show AI panel' : 'Collapse AI panel'}
+                >
+                  {aiPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                   {aiPanelCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
                 </button>
               </div>
