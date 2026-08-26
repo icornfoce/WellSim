@@ -204,6 +204,10 @@ Returns `online` if data was received within the last 30 seconds, otherwise `off
 
 ```
 WellSim/
+├── .gitignore
+├── .next
+├── ESP32-code
+├── uploads
 ├── backend/
 │   ├── server.js                    # Express entry point
 │   ├── config/index.js              # Centralized configuration
@@ -237,10 +241,13 @@ WellSim/
 │       │   ├── PatientFormModal.jsx # Add / edit patient
 │       │   ├── Header.jsx           # App header with live clock
 │       │   └── …                    # Telemetry cards, toggles, guards
+│       ├── i18n/
+│       ├── hooks/
+│       │   └── useDeviceData.js     # Real-time polling hook
 │       ├── lib/
 │       │   └── audioEncoder.js      # Browser recording → PCM WAV
-│       ├── hooks/useDeviceData.js   # Real-time polling hook
-│       └── services/api.js          # API client
+│       └── services/
+│           └── api.js               # API client
 │
 ├── docs/
 │   └── AI_PIPELINE.md               # How the screening works & its limits
