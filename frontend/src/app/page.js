@@ -48,10 +48,6 @@ import LabResultChart from '../components/LabResultChart';
 import LabResultBadge from '../components/LabResultBadge';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
 import { AUDIO_TYPES, resolveAudioUrl } from '../lib/audioTypes';
-import DashboardHeader from '../components/DashboardHeader';
-import StatsCard from '../components/StatsCard';
-import ArchitectureCard from '../components/ArchitectureCard';
-import RecentActivity from '../components/RecentActivity';
 import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { dataDictionaryTH } from '../i18n/translations';
@@ -157,12 +153,12 @@ function Dashboard() {
     }
   }, []);
 
-  // AI panel — collapsed summary mode for faster scanning
-const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
+  // Collapsible section states
+  const [demographicsCollapsed, setDemographicsCollapsed] = useState(false);
   const [vitalsCollapsed, setVitalsCollapsed] = useState(false);
-const [audioSectionCollapsed, setAudioSectionCollapsed] = useState(false);
-const [reviewSectionCollapsed, setReviewSectionCollapsed] = useState(false);
-const [labResultCollapsed, setLabResultCollapsed] = useState(false);
+  const [audioSectionCollapsed, setAudioSectionCollapsed] = useState(false);
+  const [labResultCollapsed, setLabResultCollapsed] = useState(false);
+  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
 // Dark mode drives the spectrogram colour ramp
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
@@ -1046,7 +1042,23 @@ const [labResultCollapsed, setLabResultCollapsed] = useState(false);
           </div>
         </section>
 
-        {/* ─── 3. PATIENT RECORD ────          {/* Identity */}
+        {/* ─── 3. PATIENT RECORD ──────────────────────────────────────── */}
+        <section
+          className={`lg:col-span-2 flex flex-col gap-5 ${mobileView === 'queue' ? 'hidden lg:flex' : 'flex'}`}
+          aria-label={t('a11y.patientRecord')}
+        >
+          {/* Back to queue button on mobile */}
+          <div className="lg:hidden">
+            <button
+              onClick={() => setMobileView('queue')}
+              className="btn-line !py-1.5 !px-3 text-xs flex items-center gap-1.5"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>{t('queue.backToQueue')}</span>
+            </button>
+          </div>
+
+          {/* 01. Identity & Demographics */}
           <div className="card p-5 will-fade-up animate-delay-100">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
@@ -1067,7 +1079,7 @@ const [labResultCollapsed, setLabResultCollapsed] = useState(false);
                         : patient.riskStatus === 'low'
                           ? 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/30 dark:border-risk-lowd/30 dark:bg-risk-lowd/[0.09]'
                           : 'bg-paper dark:bg-coal-800 text-muted dark:text-chalk-muted border-hairline dark:border-coal-700'
-                  }`}
+                  }`}>
                     <span className={`w-1.5 h-1.5 rounded-[1px] ${risk.dot} ${patient.riskStatus === 'high' ? 'animate-blink' : ''}`} />
                     {risk.label}
                   </span>
@@ -1096,43 +1108,38 @@ const [labResultCollapsed, setLabResultCollapsed] = useState(false);
               </div>
 
               <div className="flex items-center gap-2">
-                <button onClick={openEditModal} className="btn-line" title={t('record.editTitle')}>
+                <button onClick={openEditModal} className="btn-line !py-1.5" title={t('record.editTitle')}>
                   <Pencil className="w-3 h-3" /> {t('common.edit')}
                 </button>
                 <button
                   onClick={handleDeletePatient}
                   title={t('record.deleteTitle')}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
                              border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
                              dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
                              transition-colors duration-200 active:translate-y-px"
                 >
                   <Trash2 className="w-3 h-3" /> {t('common.delete')}
                 </button>
-              </div>
-            </div>
-
-            {/* Demographics — ruled table */}        onClick={handleDeletePatient}
-                  title={t('record.deleteTitle')}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded
-                             border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
-                             dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
-                             transition-colors duration-200 active:translate-y-px"
+                <button
+                  onClick={() => setDemographicsCollapsed(v => !v)}
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-1"
+                  title={demographicsCollapsed ? 'Show demographics' : 'Collapse demographics'}
                 >
-                  <Trash2 className="w-3 h-3" /> {t('common.delete')}
+                  {demographicsCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  {demographicsCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
                 </button>
               </div>
             </div>
 
             {/* Demographics — ruled table */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
-              {[
-                { label: t('demo.age'), value: patient.age ?? '—', unit: patient.age != null ? t('demo.yrs') : '' },
-                { label: t('demo.gender'), value: ['male','female','other','unspecified'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : (patient.gender ?? '—'), unit: '' },
+            {!demographicsCollapsed && (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5 animate-fade-in">
+                {[
+                  { label: t('demo.age'), value: patient.age ?? '—', unit: patient.age != null ? t('demo.yrs') : '' },
+                  { label: t('demo.gender'), value: ['male','female','other','unspecified'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : (patient.gender ?? '—'), unit: '' },
                   { label: t('demo.weight'), value: patient.weight ?? '—', unit: patient.weight != null ? 'kg' : '' },
                   { label: t('demo.height'), value: patient.height ?? '—', unit: patient.height != null ? 'cm' : '' },
-                  // The BMI band is a sentence, not a unit — it gets its
-                  // own line rather than being crushed in beside the number.
                   { label: 'BMI', value: bmiValue, unit: '', note: getBMICategory(bmiValue) },
                 ].map(({ label, value, unit, note }) => (
                   <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
@@ -1145,229 +1152,309 @@ const [labResultCollapsed, setLabResultCollapsed] = useState(false);
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* 02. Vitals & Data Fusion (ผลแล็บและการรวมข้อมูล) */}
+          <div className="card p-5 will-fade-up animate-delay-200">
+            <div className="flex items-center justify-between gap-3">
+              <SectionHead index="02" title={t('vitals.title')}>
+                {!vitalsCollapsed && (
+                  isEditing ? (
+                    <span className="flex gap-2">
+                      <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">{t('common.cancel')}</button>
+                      <button onClick={saveVitals} className="btn-ink !py-1.5">
+                        <Check className="w-3 h-3" /> {t('common.save')}
+                      </button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">{t('vitals.edit')}</button>
+                  )
+                )}
+              </SectionHead>
+              <button
+                onClick={() => setVitalsCollapsed(v => !v)}
+                className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                title={vitalsCollapsed ? 'Show vitals section' : 'Collapse vitals section'}
+              >
+                {vitalsCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                {vitalsCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+              </button>
             </div>
 
-            {/* Vitals */}
-            <div className="card p-5 will-fade-up animate-delay-200">
-              <div className="flex items-center justify-between gap-3">
-                <SectionHead index="02" title={t('vitals.title')} />
-                <button
-                  onClick={() => setLabSectionCollapsed(v => !v)}
-                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
-                  title={labSectionCollapsed ? 'Show vitals section' : 'Collapse vitals section'}
+            {!vitalsCollapsed && (
+              <div className="mt-4 animate-fade-in">
+                {/* Abnormal summary chip */}
+                {!isEditing && (() => {
+                  const { measured, abnormal } = summariseVitals(v);
+                  if (measured === 0) return null;
+                  return (
+                    <div className={`mb-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                      abnormal > 0
+                        ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/20 dark:border-risk-modd/25 dark:bg-risk-modd/[0.09]'
+                        : 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/20 dark:border-risk-lowd/25 dark:bg-risk-lowd/[0.09]'
+                    }`}>
+                      {abnormal > 0
+                        ? <><AlertTriangle className="w-3 h-3" /> {t('portal.vitalsAbnormal', { n: abnormal })}</>
+                        : <><CheckCircle className="w-3 h-3" /> {t('portal.vitalsAllNormal')}</>
+                      }
+                    </div>
+                  );
+                })()}
+
+                <VitalsGrid
+                  vitals={v}
+                  isEditing={isEditing}
+                  edited={editedVitals}
+                  onEdit={setEditedVitals}
+                  t={t}
                 >
-                  {labSectionCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-                  {labSectionCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
-                </button>
+                  {/* Reserved slot */}
+                  <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
+                    <p className="microlabel">{t('vitals.reserved')}</p>
+                    <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
+                  </div>
+                </VitalsGrid>
               </div>
-              {!labSectionCollapsed && (
-                <>
-                  <SectionHead index="02" title={t('vitals.title')}>
-                    {isEditing ? (
-                      <span className="flex gap-2">
-                        <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">{t('common.cancel')}</button>
-                        <button onClick={saveVitals} className="btn-ink !py-1.5">
-                          <Check className="w-3 h-3" /> {t('common.save')}
+            )}
+          </div>
+
+          {/* 03. Bio-acoustics (เสียงชีวภาพ) */}
+          <div className="card p-5 will-fade-up animate-delay-300">
+            <div className="flex items-center justify-between gap-3">
+              <SectionHead index="03" title={t('audio.title')}>
+                <AudioTypeTabs
+                  active={activeAudioTab}
+                  onChange={setActiveAudioTab}
+                  audioLogs={patient?.audioLogs}
+                  t={t}
+                  gap="gap-2"
+                />
+              </SectionHead>
+              <button
+                onClick={() => setAudioSectionCollapsed(v => !v)}
+                className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                title={audioSectionCollapsed ? 'Show audio section' : 'Collapse audio section'}
+              >
+                {audioSectionCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                {audioSectionCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+              </button>
+            </div>
+
+            {!audioSectionCollapsed && (
+              <div className="mt-4 animate-fade-in">
+                {/* One hidden picker serves both the empty and populated states */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_AUDIO}
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+
+                {patient?.audioLogs?.[activeAudioTab]?.available ? (
+                  <div>
+                    <div className="flex items-center justify-between gap-4 datum">
+                      <span className="truncate">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
+                      <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
+                    </div>
+
+                    <AudioPlayer
+                      player={player}
+                      waveform={currentAnalysis?.waveform}
+                      segments={currentAnalysis?.segments}
+                      durationSec={currentAnalysis?.durationSec || 0}
+                      t={t}
+                    />
+
+                    {/* Manage the stored recording */}
+                    <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadState.busy || deleting}
+                        className="btn-line !py-1.5 disabled:opacity-50"
+                      >
+                        <Upload className="w-3 h-3" /> {t('audio.replace')}
+                      </button>
+                      <button
+                        onClick={handleDeleteAudio}
+                        disabled={uploadState.busy || deleting}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
+                                   border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
+                                   dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
+                                   transition-colors duration-200 active:translate-y-px disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
+                      </button>
+
+                      {uploadState.busy && (
+                        <span className="note !text-med-700 dark:!text-med-300">
+                          {uploadState.message}
+                        </span>
+                      )}
+                      {!uploadState.busy && uploadState.message && (
+                        <span className="note">{uploadState.message}</span>
+                      )}
+                      {uploadState.error && (
+                        <span className="note !text-risk-high dark:!text-risk-highd">
+                          {uploadState.error}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
+                  </div>
+                ) : (
+                  <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-6 px-4 text-center">
+                    <p className="microlabel mb-2">{t('audio.none')}</p>
+                    {isBrowserRecording ? (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-risk-high dark:bg-risk-highd rounded-full animate-pulse" />
+                          <span className="text-[13px] font-medium text-risk-high dark:text-risk-highd tabular-nums">
+                            {t('audio.recordingNow', { s: browserRecordTime })}
+                          </span>
+                        </div>
+                        <p className="note-sm">{t('audio.recordingHint', { max: 120 })}</p>
+                        <button
+                          onClick={stopBrowserRecording}
+                          className="btn-line !border-risk-high/50 !text-risk-high hover:!bg-risk-high/[0.06] dark:!border-risk-highd/50 dark:!text-risk-highd"
+                        >
+                          {t('audio.stopRecording')}
                         </button>
-                      </span>
+                      </div>
                     ) : (
-                      <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">{t('vitals.edit')}</button>
+                      <div className="space-y-4">
+                        <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
+                        <div className="flex flex-wrap justify-center gap-3">
+                          <button
+                            onClick={triggerESP32Record}
+                            disabled={isTriggeringESP32 || uploadState.busy}
+                            className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
+                            title={t('audio.useEsp32')}
+                          >
+                            <Laptop className="w-3.5 h-3.5" /> {t('audio.useEsp32')}
+                          </button>
+                          <button
+                            onClick={startBrowserRecording}
+                            disabled={isTriggeringESP32 || uploadState.busy}
+                            className="btn-line hover:border-med-500 hover:text-med-500 disabled:opacity-50"
+                          >
+                            <Mic className="w-3.5 h-3.5" /> {t('audio.useBrowserMic')}
+                          </button>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isTriggeringESP32 || uploadState.busy}
+                            className="btn-ink disabled:opacity-50"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
+                          </button>
+                        </div>
+                        {captureMessage && <p className="note-sm text-med-600 dark:text-med-300 mt-2">{captureMessage}</p>}
+                        <p className="note-sm max-w-md mx-auto">{t('audio.uploadHint')}</p>
+                      </div>
                     )}
-                  </SectionHead>
-
-                  {/* Abnormal summary chip. The counts come from the same
-                      spec table the cells below are drawn from, so the
-                      headline and the readings can never disagree. */}
-                  {!isEditing && (() => {
-                    const { measured, abnormal } = summariseVitals(v);
-                    if (measured === 0) return null;
-                    return (
-                      <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                        abnormal > 0
-                          ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/20 dark:border-risk-modd/25 dark:bg-risk-modd/[0.09]'
-                          : 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/20 dark:border-risk-lowd/25 dark:bg-risk-lowd/[0.09]'
-                      }`}>
-                        {abnormal > 0
-                          ? <><AlertTriangle className="w-3 h-3" /> {t('portal.vitalsAbnormal', { n: abnormal })}</>
-                          : <><CheckCircle className="w-3 h-3" /> {t('portal.vitalsAllNormal')}</>
-                        }
-                      </div>
-                    );
-                  })()}
-
-                  <VitalsGrid
-                    vitals={v}
-                    isEditing={isEditing}
-                    edited={editedVitals}
-                    onEdit={setEditedVitals}
-                    t={t}
-                  >
-                    {/* Reserved slot */}
-                    <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
-                      <p className="microlabel">{t('vitals.reserved')}</p>
-                      <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
-                    </div>
-                  </VitalsGrid>
-                </>
-              )}
-            </div>
-
-            {/* Bio-acoustics */}
-            <div className="card p-5 will-fade-up animate-delay-300">
-              <div className="flex items-center justify-between gap-3">
-                <SectionHead index="03" title={t('audio.title')} />
-                <button
-                  onClick={() => setAudioSectionCollapsed(v => !v)}
-                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
-                  title={audioSectionCollapsed ? 'Show audio section' : 'Collapse audio section'}
-                >
-                  {audioSectionCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-                  {audioSectionCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
-                </button>
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              {!audioSectionCollapsed && (
-                <div className="mt-4">
-                  {/* One hidden picker serves both the empty and populated states */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={ACCEPTED_AUDIO}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
+          {/* 04. Lab Results & Data Integration (ผลแล็บและการรวมข้อมูล) */}
+          <div className="card p-5 will-fade-up animate-delay-400">
+            <div className="flex items-center justify-between gap-3">
+              <SectionHead index="04" title={t('vitals.title')} />
+              <button
+                onClick={() => setLabResultCollapsed(v => !v)}
+                className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                title={labResultCollapsed ? 'Show lab results' : 'Collapse lab results'}
+              >
+                {labResultCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                {labResultCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+              </button>
+            </div>
+            {!labResultCollapsed && (
+              <div className="mt-4 animate-fade-in">
+                <LabResultBadge status="pending" label={t('tag.high') ? 'Verified' : 'Pending'} />
+                <div className="mt-3">
+                  <LabResultChart data={patient?.vitals || {}} />
+                </div>
+              </div>
+            )}
+          </div>
 
-                  {patient?.audioLogs?.[activeAudioTab]?.available ? (
-                    <div>
-                      <div className="flex items-center justify-between gap-4 datum">
-                        <span className="truncate">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
-                        <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
-                      </div>
-
-                      <AudioPlayer
-                        player={player}
-                        waveform={currentAnalysis?.waveform}
-                        segments={currentAnalysis?.segments}
-                        durationSec={currentAnalysis?.durationSec || 0}
-                        t={t}
-                      />
-
-                      {/* Manage the stored recording */}
-                      <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadState.busy || deleting}
-                          className="btn-line !py-1.5 disabled:opacity-50"
-                        >
-                          <Upload className="w-3 h-3" /> {t('audio.replace')}
-                        </button>
-                        <button
-                          onClick={handleDeleteAudio}
-                          disabled={uploadState.busy || deleting}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
-                                     border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
-                                     dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
-                                     transition-colors duration-200 active:translate-y-px disabled:opacity-50"
-                        >
-                          <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
-                        </button>
-
-                        {uploadState.busy && (
-                          <span className="note !text-med-700 dark:!text-med-300">
-                            {uploadState.message}
-                          </span>
-                        )}
-                        {!uploadState.busy && uploadState.message && (
-                          <span className="note">{uploadState.message}</span>
-                        )}
-                        {uploadState.error && (
-                          <span className="note !text-risk-high dark:!text-risk-highd">
-                            {uploadState.error}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
-                    </div>
-                                  <button
+          {/* 05. AI Analysis & Screening Results by Physician (ผลคัดกรองและการตรวจสอบโดยแพทย์) */}
+          <div className="card overflow-hidden will-fade-up animate-delay-400">
+            <div className="p-5 flex items-center justify-between gap-3 border-b border-hairline dark:border-coal-700 bg-surface dark:bg-coal-900">
+              <SectionHead index="05" title={t('ai.title')} />
+              <div className="flex items-center gap-2">
+                {!aiPanelCollapsed && (
+                  <button
+                    onClick={handleRunAnalysis}
+                    disabled={analysisRunning || !patient?.audioLogs?.[activeAudioTab]?.available}
+                    className="btn-ink !py-1 !px-2.5 text-xs flex items-center gap-1.5 disabled:opacity-40"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${analysisRunning ? 'animate-spin' : ''}`} />
+                    <span>{analysisRunning ? t('ai.running') : t('ai.runScreening')}</span>
+                  </button>
+                )}
+                <button
                   onClick={() => setAiPanelCollapsed(v => !v)}
-                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-1"
                   title={aiPanelCollapsed ? 'Show AI panel' : 'Collapse AI panel'}
                 >
                   {aiPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                   {aiPanelCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
                 </button>
               </div>
-
-              {/* Collapsed summary row — shows verdict, triage, confidence at a glance */}
-
-{/* Lab Results & Data Integration */}
-<div className="card p-5 will-fade-up animate-delay-400">
-  <div className="flex items-center justify-between gap-3">
-    <SectionHead index="04" title={t('lab.title') ?? 'Lab Results'} />
-    <button
-      onClick={() => setLabResultCollapsed(v => !v)}
-      className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
-      title={labResultCollapsed ? 'Show lab results' : 'Collapse lab results'}
-    >
-      {labResultCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-      {labResultCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
-    </button>
-  </div>
-  {!labResultCollapsed && (
-    <div className="mt-4">
-      {/* Placeholder badge and chart; replace with real data */}
-      <LabResultBadge status="pending" label={t('lab.resultLabel') ?? 'Pending'} />
-      <LabResultChart data={[]} />
-    </div>
-  )}
-</div>
-
-              {aiPanelCollapsed && currentAnalysis && currentAnalysis.status !== 'error' && (
-                <div className="mt-3 flex flex-wrap items-center gap-3 animate-fade-in">
-                  {(() => {
-                    const rev = currentAnalysis.review || { status: 'pending' };
-                    const lbl = rev.finalLabel || currentAnalysis.label;
-                    const tri = rev.finalTriage || currentAnalysis.triage?.level || 'green';
-                    const conf = Math.round((currentAnalysis.confidence || 0) * 100);
-                    const triColors = {
-                      red: 'text-risk-high dark:text-risk-highd bg-risk-high/[0.06] border-risk-high/30',
-                      yellow: 'text-risk-mod dark:text-risk-modd bg-risk-mod/[0.06] border-risk-mod/30',
-                      green: 'text-risk-low dark:text-risk-lowd bg-risk-low/[0.06] border-risk-low/30',
-                    };
-                    const revColors = {
-                      pending: 'text-muted dark:text-chalk-muted',
-                      confirmed: 'text-med-600 dark:text-med-300',
-                      modified: 'text-med-600 dark:text-med-300',
-                      rejected: 'text-risk-high dark:text-risk-highd',
-                    };
-                    return (
-                      <>
-                        <span className="text-sm font-semibold text-ink dark:text-chalk">
-                          {lbl ? lbl.replace(/_/g, ' ') : '—'}
-                        </span>
-                        <span className={`font-mono text-[11px] px-2 py-0.5 rounded border ${triColors[tri] || triColors.green}`}>
-                          {t('triage.' + tri)}
-                        </span>
-                        <span className="font-mono text-[11px] text-muted dark:text-chalk-muted">
-                          {t('ai.confidence')} {conf}%
-                        </span>
-                        <span className={`font-mono text-[11px] ${revColors[rev.status] || revColors.pending}`}>
-                          {t('ai.status' + rev.status.charAt(0).toUpperCase() + rev.status.slice(1))}
-                        </span>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-              {aiPanelCollapsed && !currentAnalysis && (
-                <p className="note mt-2 animate-fade-in">{t('ai.noResult')}</p>
-              )}
             </div>
+
+            {/* Collapsed summary row — shows verdict, triage, confidence at a glance */}
+            {aiPanelCollapsed && currentAnalysis && currentAnalysis.status !== 'error' && (
+              <div className="p-4 flex flex-wrap items-center gap-3 animate-fade-in">
+                {(() => {
+                  const rev = currentAnalysis.review || { status: 'pending' };
+                  const lbl = rev.finalLabel || currentAnalysis.label;
+                  const tri = rev.finalTriage || currentAnalysis.triage?.level || 'green';
+                  const conf = Math.round((currentAnalysis.confidence || 0) * 100);
+                  const triColors = {
+                    red: 'text-risk-high dark:text-risk-highd bg-risk-high/[0.06] border-risk-high/30',
+                    yellow: 'text-risk-mod dark:text-risk-modd bg-risk-mod/[0.06] border-risk-mod/30',
+                    green: 'text-risk-low dark:text-risk-lowd bg-risk-low/[0.06] border-risk-low/30',
+                  };
+                  const revColors = {
+                    pending: 'text-muted dark:text-chalk-muted',
+                    confirmed: 'text-med-600 dark:text-med-300',
+                    modified: 'text-med-600 dark:text-med-300',
+                    rejected: 'text-risk-high dark:text-risk-highd',
+                  };
+                  return (
+                    <>
+                      <span className="text-sm font-semibold text-ink dark:text-chalk">
+                        {lbl ? lbl.replace(/_/g, ' ') : '—'}
+                      </span>
+                      <span className={`font-mono text-[11px] px-2 py-0.5 rounded border ${triColors[tri] || triColors.green}`}>
+                        {t('triage.' + tri)}
+                      </span>
+                      <span className="font-mono text-[11px] text-muted dark:text-chalk-muted">
+                        {t('ai.confidence')} {conf}%
+                      </span>
+                      <span className={`font-mono text-[11px] ${revColors[rev.status] || revColors.pending}`}>
+                        {t('ai.status' + rev.status.charAt(0).toUpperCase() + rev.status.slice(1))}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+            {aiPanelCollapsed && !currentAnalysis && (
+              <p className="p-4 note animate-fade-in">{t('ai.noResult')}</p>
+            )}
 
             {/* Full panel — hidden when collapsed */}
             {!aiPanelCollapsed && (
-              <div className="p-5">
+              <div className="p-5 animate-fade-in">
                 <AIAnalysisPanel
                   analysis={currentAnalysis}
                   type={activeAudioTab}
