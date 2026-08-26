@@ -46,6 +46,7 @@ import LabResultChart from '../components/LabResultChart';
 import LabResultBadge from '../components/LabResultBadge';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
 import { AUDIO_TYPES, resolveAudioUrl } from '../lib/audioTypes';
+import { useLang } from '../i18n/LanguageContext';
 import { useToast } from '../components/ui/Toast';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { dataDictionaryTH } from '../i18n/translations';
@@ -67,7 +68,6 @@ import {
   submitReview as apiSubmitReview,
   uploadAudio as apiUploadAudio,
   deleteAudio as apiDeleteAudio,
-  sendDeviceCommand as apiSendDeviceCommand,
 } from '../services/api';
 
 /** Queue ordering: urgent first, then anything a doctor has not signed. */
