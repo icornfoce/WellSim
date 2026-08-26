@@ -44,6 +44,8 @@ import SectionHead from '../components/ui/SectionHead';
 import AudioPlayer from '../components/AudioPlayer';
 import AudioTypeTabs from '../components/AudioTypeTabs';
 import VitalsGrid, { summariseVitals } from '../components/vitals/VitalsGrid';
+import LabResultChart from '../components/LabResultChart';
+import LabResultBadge from '../components/LabResultBadge';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
 import { AUDIO_TYPES, resolveAudioUrl } from '../lib/audioTypes';
 import DashboardHeader from '../components/DashboardHeader';
@@ -156,8 +158,12 @@ function Dashboard() {
   }, []);
 
   // AI panel — collapsed summary mode for faster scanning
-  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
-  // Dark mode drives the spectrogram colour ramp
+const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
+const [labSectionCollapsed, setLabSectionCollapsed] = useState(false);
+const [audioSectionCollapsed, setAudioSectionCollapsed] = useState(false);
+const [reviewSectionCollapsed, setReviewSectionCollapsed] = useState(false);
+const [labResultCollapsed, setLabResultCollapsed] = useState(false);
+// Dark mode drives the spectrogram colour ramp
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
     const read = () => setIsDark(document.documentElement.classList.contains('dark'));
@@ -1040,21 +1046,7 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* ─── 3. PATIENT RECORD ──────────────────────────────────────── */}
-        <section
-          className={`lg:col-span-2 lg:flex flex-col gap-5 ${mobileView === 'queue' ? 'hidden' : 'flex'}`}
-        >
-          {/* The way back out of the record on a phone. On desktop both
-              panes are visible, so it would be a button to nowhere. */}
-          <button
-            type="button"
-            onClick={() => setMobileView('queue')}
-            className="lg:hidden self-start btn-line !py-2 print-hidden"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" /> {t('queue.backToQueue')}
-          </button>
-
-          {/* Identity */}
+        {/* ─── 3. PATIENT RECORD ────          {/* Identity */}
           <div className="card p-5 will-fade-up animate-delay-100">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
@@ -1075,7 +1067,7 @@ function Dashboard() {
                         : patient.riskStatus === 'low'
                           ? 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/30 dark:border-risk-lowd/30 dark:bg-risk-lowd/[0.09]'
                           : 'bg-paper dark:bg-coal-800 text-muted dark:text-chalk-muted border-hairline dark:border-coal-700'
-                  }`}>
+                  }`}
                     <span className={`w-1.5 h-1.5 rounded-[1px] ${risk.dot} ${patient.riskStatus === 'high' ? 'animate-blink' : ''}`} />
                     {risk.label}
                   </span>
@@ -1120,276 +1112,212 @@ function Dashboard() {
               </div>
             </div>
 
+            {/* Demographics — ruled table */}        onClick={handleDeletePatient}
+                  title={t('record.deleteTitle')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded
+                             border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
+                             dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
+                             transition-colors duration-200 active:translate-y-px"
+                >
+                  <Trash2 className="w-3 h-3" /> {t('common.delete')}
+                </button>
+              </div>
+            </div>
+
             {/* Demographics — ruled table */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-hairline dark:bg-coal-700 border border-hairline dark:border-coal-700 rounded overflow-hidden mt-5">
               {[
                 { label: t('demo.age'), value: patient.age ?? '—', unit: patient.age != null ? t('demo.yrs') : '' },
                 { label: t('demo.gender'), value: ['male','female','other','unspecified'].includes(String(patient.gender || '').toLowerCase()) ? t('gender.' + String(patient.gender).toLowerCase()) : (patient.gender ?? '—'), unit: '' },
-                { label: t('demo.weight'), value: patient.weight ?? '—', unit: patient.weight != null ? 'kg' : '' },
-                { label: t('demo.height'), value: patient.height ?? '—', unit: patient.height != null ? 'cm' : '' },
-                // The BMI band is a sentence, not a unit — it gets its
-                // own line rather than being crushed in beside the number.
-                { label: 'BMI', value: bmiValue, unit: '', note: getBMICategory(bmiValue) },
-              ].map(({ label, value, unit, note }) => (
-                <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
-                  <p className="microlabel">{label}</p>
-                  <p className="text-base font-medium text-ink dark:text-chalk mt-1 tabular-nums">
-                    {value}
-                    {unit && <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
-                  </p>
-                  {note && <p className="note-sm mt-0.5">{note}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Vitals */}
-          <div className="card p-5 will-fade-up animate-delay-200">
-            <SectionHead index="02" title={t('vitals.title')}>
-              {isEditing ? (
-                <span className="flex gap-2">
-                  <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">{t('common.cancel')}</button>
-                  <button onClick={saveVitals} className="btn-ink !py-1.5">
-                    <Check className="w-3 h-3" /> {t('common.save')}
-                  </button>
-                </span>
-              ) : (
-                <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">{t('vitals.edit')}</button>
-              )}
-            </SectionHead>
-
-            {/* Abnormal summary chip. The counts come from the same
-                spec table the cells below are drawn from, so the
-                headline and the readings can never disagree. */}
-            {!isEditing && (() => {
-              const { measured, abnormal } = summariseVitals(v);
-              if (measured === 0) return null;
-              return (
-                <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                  abnormal > 0
-                    ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/20 dark:border-risk-modd/25 dark:bg-risk-modd/[0.09]'
-                    : 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/20 dark:border-risk-lowd/25 dark:bg-risk-lowd/[0.09]'
-                }`}>
-                  {abnormal > 0
-                    ? <><AlertTriangle className="w-3 h-3" /> {t('portal.vitalsAbnormal', { n: abnormal })}</>
-                    : <><CheckCircle className="w-3 h-3" /> {t('portal.vitalsAllNormal')}</>
-                  }
-                </div>
-              );
-            })()}
-
-            <VitalsGrid
-              vitals={v}
-              isEditing={isEditing}
-              edited={editedVitals}
-              onEdit={setEditedVitals}
-              t={t}
-            >
-              {/* Reserved slot */}
-              <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
-                <p className="microlabel">{t('vitals.reserved')}</p>
-                <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
-              </div>
-            </VitalsGrid>
-          </div>
-
-          {/* Bio-acoustics */}
-          <div className="card p-5 will-fade-up animate-delay-300">
-            <SectionHead index="03" title={t('audio.title')}>
-              <AudioTypeTabs
-                active={activeAudioTab}
-                onChange={setActiveAudioTab}
-                audioLogs={patient?.audioLogs}
-                t={t}
-              />
-            </SectionHead>
-
-            <div className="mt-4">
-              {/* One hidden picker serves both the empty and populated states */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPTED_AUDIO}
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-
-              {patient?.audioLogs?.[activeAudioTab]?.available ? (
-                <div>
-                  <div className="flex items-center justify-between gap-4 datum">
-                    <span className="truncate">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
-                    <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
+                  { label: t('demo.weight'), value: patient.weight ?? '—', unit: patient.weight != null ? 'kg' : '' },
+                  { label: t('demo.height'), value: patient.height ?? '—', unit: patient.height != null ? 'cm' : '' },
+                  // The BMI band is a sentence, not a unit — it gets its
+                  // own line rather than being crushed in beside the number.
+                  { label: 'BMI', value: bmiValue, unit: '', note: getBMICategory(bmiValue) },
+                ].map(({ label, value, unit, note }) => (
+                  <div key={label} className="bg-surface dark:bg-coal-900 px-3 py-2.5">
+                    <p className="microlabel">{label}</p>
+                    <p className="text-base font-medium text-ink dark:text-chalk mt-1 tabular-nums">
+                      {value}
+                      {unit && <span className="font-mono text-[11px] text-muted dark:text-chalk-muted ml-1.5">{unit}</span>}
+                    </p>
+                    {note && <p className="note-sm mt-0.5">{note}</p>}
                   </div>
+                ))}
+              </div>
+            </div>
 
-                  <AudioPlayer
-                    player={player}
-                    waveform={currentAnalysis?.waveform}
-                    segments={currentAnalysis?.segments}
-                    durationSec={currentAnalysis?.durationSec || 0}
+            {/* Vitals */}
+            <div className="card p-5 will-fade-up animate-delay-200">
+              <div className="flex items-center justify-between gap-3">
+                <SectionHead index="02" title={t('vitals.title')} />
+                <button
+                  onClick={() => setLabSectionCollapsed(v => !v)}
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                  title={labSectionCollapsed ? 'Show vitals section' : 'Collapse vitals section'}
+                >
+                  {labSectionCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  {labSectionCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+                </button>
+              </div>
+              {!labSectionCollapsed && (
+                <>
+                  <SectionHead index="02" title={t('vitals.title')}>
+                    {isEditing ? (
+                      <span className="flex gap-2">
+                        <button onClick={() => setIsEditing(false)} className="btn-line !py-1.5">{t('common.cancel')}</button>
+                        <button onClick={saveVitals} className="btn-ink !py-1.5">
+                          <Check className="w-3 h-3" /> {t('common.save')}
+                        </button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setIsEditing(true)} className="btn-line !py-1.5">{t('vitals.edit')}</button>
+                    )}
+                  </SectionHead>
+
+                  {/* Abnormal summary chip. The counts come from the same
+                      spec table the cells below are drawn from, so the
+                      headline and the readings can never disagree. */}
+                  {!isEditing && (() => {
+                    const { measured, abnormal } = summariseVitals(v);
+                    if (measured === 0) return null;
+                    return (
+                      <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                        abnormal > 0
+                          ? 'bg-risk-mod/[0.07] text-risk-mod dark:text-risk-modd border-risk-mod/20 dark:border-risk-modd/25 dark:bg-risk-modd/[0.09]'
+                          : 'bg-risk-low/[0.07] text-risk-low dark:text-risk-lowd border-risk-low/20 dark:border-risk-lowd/25 dark:bg-risk-lowd/[0.09]'
+                      }`}>
+                        {abnormal > 0
+                          ? <><AlertTriangle className="w-3 h-3" /> {t('portal.vitalsAbnormal', { n: abnormal })}</>
+                          : <><CheckCircle className="w-3 h-3" /> {t('portal.vitalsAllNormal')}</>
+                        }
+                      </div>
+                    );
+                  })()}
+
+                  <VitalsGrid
+                    vitals={v}
+                    isEditing={isEditing}
+                    edited={editedVitals}
+                    onEdit={setEditedVitals}
                     t={t}
+                  >
+                    {/* Reserved slot */}
+                    <div className="bg-surface dark:bg-coal-900 p-4 flex flex-col items-center justify-center text-center">
+                      <p className="microlabel">{t('vitals.reserved')}</p>
+                      <p className="note-sm mt-1">{t('vitals.reservedNote')}</p>
+                    </div>
+                  </VitalsGrid>
+                </>
+              )}
+            </div>
+
+            {/* Bio-acoustics */}
+            <div className="card p-5 will-fade-up animate-delay-300">
+              <div className="flex items-center justify-between gap-3">
+                <SectionHead index="03" title={t('audio.title')} />
+                <button
+                  onClick={() => setAudioSectionCollapsed(v => !v)}
+                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+                  title={audioSectionCollapsed ? 'Show audio section' : 'Collapse audio section'}
+                >
+                  {audioSectionCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  {audioSectionCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+                </button>
+              </div>
+
+              {!audioSectionCollapsed && (
+                <div className="mt-4">
+                  {/* One hidden picker serves both the empty and populated states */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ACCEPTED_AUDIO}
+                    onChange={handleFileUpload}
+                    className="hidden"
                   />
 
-                  {/* Manage the stored recording */}
-                  <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadState.busy || deleting}
-                      className="btn-line !py-1.5 disabled:opacity-50"
-                    >
-                      <Upload className="w-3 h-3" /> {t('audio.replace')}
-                    </button>
-                    <button
-                      onClick={handleDeleteAudio}
-                      disabled={uploadState.busy || deleting}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
-                                 border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
-                                 dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
-                                 transition-colors duration-200 active:translate-y-px disabled:opacity-50"
-                    >
-                      <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
-                    </button>
-
-                    {uploadState.busy && (
-                      <span className="note !text-med-700 dark:!text-med-300">
-                        {uploadState.message}
-                      </span>
-                    )}
-                    {!uploadState.busy && uploadState.message && (
-                      <span className="note">{uploadState.message}</span>
-                    )}
-                    {uploadState.error && (
-                      <span className="note !text-risk-high dark:!text-risk-highd">
-                        {uploadState.error}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
-                </div>
-              ) : (
-                <div className="border border-dashed border-hairline-strong dark:border-coal-600 rounded-md py-7 px-4 text-center">
-                  <p className="microlabel mb-2.5">{t('audio.none')}</p>
-
-                  {isTriggeringESP32 ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="w-2.5 h-2.5 bg-med-500 rounded-full animate-ping" />
-                        <span className="text-[13px] font-medium text-ink dark:text-chalk">
-                          {t('audio.esp32Triggered')}
-                        </span>
+                  {patient?.audioLogs?.[activeAudioTab]?.available ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-4 datum">
+                        <span className="truncate">{t('audio.src')} · {patient?.audioLogs?.[activeAudioTab]?.status ? td(patient.audioLogs[activeAudioTab].status) : t('audio.statusUnavailable')}</span>
+                        <span className="shrink-0">{t('audio.dur')} {patient?.audioLogs?.[activeAudioTab]?.duration || '0:00'}</span>
                       </div>
-                      <p className="note">{captureMessage}</p>
-                    </div>
-                  ) : isBrowserRecording ? (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="w-2.5 h-2.5 bg-risk-high dark:bg-risk-highd rounded-full animate-pulse" />
-                        <span className="text-[13px] font-medium text-risk-high dark:text-risk-highd tabular-nums">
-                          {t('audio.recordingNow', { s: browserRecordTime })}
-                        </span>
+
+                      <AudioPlayer
+                        player={player}
+                        waveform={currentAnalysis?.waveform}
+                        segments={currentAnalysis?.segments}
+                        durationSec={currentAnalysis?.durationSec || 0}
+                        t={t}
+                      />
+
+                      {/* Manage the stored recording */}
+                      <div className="flex flex-wrap items-center gap-2 mt-3 print-hidden">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadState.busy || deleting}
+                          className="btn-line !py-1.5 disabled:opacity-50"
+                        >
+                          <Upload className="w-3 h-3" /> {t('audio.replace')}
+                        </button>
+                        <button
+                          onClick={handleDeleteAudio}
+                          disabled={uploadState.busy || deleting}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded
+                                     border border-risk-high/40 text-risk-high hover:bg-risk-high/[0.06]
+                                     dark:border-risk-highd/40 dark:text-risk-highd dark:hover:bg-risk-highd/[0.08]
+                                     transition-colors duration-200 active:translate-y-px disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3 h-3" /> {deleting ? t('audio.deleting') : t('audio.delete')}
+                        </button>
+
+                        {uploadState.busy && (
+                          <span className="note !text-med-700 dark:!text-med-300">
+                            {uploadState.message}
+                          </span>
+                        )}
+                        {!uploadState.busy && uploadState.message && (
+                          <span className="note">{uploadState.message}</span>
+                        )}
+                        {uploadState.error && (
+                          <span className="note !text-risk-high dark:!text-risk-highd">
+                            {uploadState.error}
+                          </span>
+                        )}
                       </div>
-                      <p className="note-sm">{t('audio.recordingHint', { max: 10 })}</p>
-                      <button
-                        onClick={stopBrowserRecording}
-                        className="btn-line !border-risk-high/50 !text-risk-high hover:!bg-risk-high/[0.06]
-                                   dark:!border-risk-highd/50 dark:!text-risk-highd"
-                      >
-                        {t('audio.stopRecording')}
-                      </button>
+
+                      <p className="note mt-2.5 max-w-prose">{t('audio.deleteNote')}</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      <p className="note max-w-sm mx-auto">{t('audio.noneDetail')}</p>
-
-                      {/* Tiered capture options — priority order */}
-                      <div className="flex flex-col gap-2 max-w-sm mx-auto text-left">
-                        <p className="microlabel text-center mb-1">{t('audio.captureGuideTitle')}</p>
-
-                        {/* Option 1: ESP32 — preferred */}
-                        <div className="border border-hairline dark:border-coal-700 rounded-md overflow-hidden">
-                          <div className="flex items-center justify-between px-3 py-1.5 bg-ink/[0.03] dark:bg-coal-800 border-b border-hairline dark:border-coal-700">
-                            <p className="font-mono text-[9px] uppercase tracking-wider text-med-600 dark:text-med-300">
-                              {t('audio.captureGuide1').split(':')[0]}
-                            </p>
-                          </div>
-                          <div className="px-3 py-2.5">
-                            <button
-                              onClick={triggerESP32Record}
-                              disabled={uploadState.busy}
-                              className="btn-ink w-full disabled:opacity-50"
-                            >
-                              <Mic className="w-3.5 h-3.5" /> {t('audio.useEsp32')}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Options 2 & 3: browser mic + upload */}
-                        <div className="border border-hairline dark:border-coal-700 rounded-md overflow-hidden">
-                          <div className="flex items-center px-3 py-1.5 bg-ink/[0.03] dark:bg-coal-800 border-b border-hairline dark:border-coal-700">
-                            <p className="font-mono text-[9px] uppercase tracking-wider text-muted dark:text-chalk-muted">
-                              {lang === 'th' ? 'ทางเลือกอื่น' : 'Alternatives'}
-                            </p>
-                          </div>
-                          <div className="px-3 py-2.5 flex flex-wrap gap-2">
-                            <button
-                              onClick={startBrowserRecording}
-                              disabled={uploadState.busy}
-                              className="btn-line flex-1 hover:border-med-500 hover:text-med-600 dark:hover:text-med-300 disabled:opacity-50"
-                            >
-                              <Laptop className="w-3 h-3" /> {t('audio.useBrowserMic')}
-                            </button>
-                            <button
-                              onClick={() => fileInputRef.current?.click()}
-                              disabled={uploadState.busy}
-                              className="btn-line flex-1 disabled:opacity-50"
-                            >
-                              <Upload className="w-3.5 h-3.5" />
-                              {uploadState.busy ? t('audio.uploading') : t('audio.uploadFile')}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {uploadState.busy && (
-                        <p className="note !text-med-700 dark:!text-med-300">{uploadState.message}</p>
-                      )}
-                      {uploadState.error && (
-                        <p className="note !text-risk-high dark:!text-risk-highd max-w-md mx-auto">
-                          {uploadState.error}
-                        </p>
-                      )}
-
-                      <p className="note-sm max-w-md mx-auto">{t('audio.uploadHint')}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* AI screening (layer 1) + physician review (layer 2) */}
-          <div className="card overflow-hidden will-fade-up animate-delay-400">
-            {/* Collapsible header with summary */}
-            <div
-              className={`p-5 ${!aiPanelCollapsed ? 'border-b border-hairline dark:border-coal-700' : ''}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <SectionHead index="04" title={t('ai.title')}>
-                  <span className="font-mono text-[10px] text-muted dark:text-chalk-muted uppercase">
-                    {t('audio.' + activeAudioTab)}
-                  </span>
-                </SectionHead>
-                <button
-                  onClick={() => setAiPanelCollapsed(v => !v)}
-                  className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
-                  title={aiPanelCollapsed ? 'Show full AI panel' : 'Collapse AI panel'}
-                >
-                  {aiPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                   {aiPanelCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
                 </button>
               </div>
 
               {/* Collapsed summary row — shows verdict, triage, confidence at a glance */}
+
+{/* Lab Results & Data Integration */}
+<div className="card p-5 will-fade-up animate-delay-400">
+  <div className="flex items-center justify-between gap-3">
+    <SectionHead index="04" title={t('lab.title') ?? 'Lab Results'} />
+    <button
+      onClick={() => setLabResultCollapsed(v => !v)}
+      className="shrink-0 flex items-center gap-1 font-mono text-[10px] text-muted dark:text-chalk-muted hover:text-ink dark:hover:text-chalk transition-colors duration-200 ml-2"
+      title={labResultCollapsed ? 'Show lab results' : 'Collapse lab results'}
+    >
+      {labResultCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+      {labResultCollapsed ? (lang === 'th' ? 'ขยาย' : 'Expand') : (lang === 'th' ? 'ย่อ' : 'Collapse')}
+    </button>
+  </div>
+  {!labResultCollapsed && (
+    <div className="mt-4">
+      {/* Placeholder badge and chart; replace with real data */}
+      <LabResultBadge status="pending" label={t('lab.resultLabel') ?? 'Pending'} />
+      <LabResultChart data={[]} />
+    </div>
+  )}
+</div>
+
               {aiPanelCollapsed && currentAnalysis && currentAnalysis.status !== 'error' && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 animate-fade-in">
                   {(() => {
